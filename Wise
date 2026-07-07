@@ -1,7 +1,7 @@
 (function(){
     function findVM() {
         if (window.vm) return window.vm;
-        const app = document.querySelector('#app');
+        const app = document.querySelector('#app') || document.querySelector('#react-root');
         if (!app) return null;
         for (const key in app) {
             if (key.startsWith('__reactInternalInstance$') || key.startsWith('__reactFiber$')) {
@@ -16,26 +16,32 @@
         return null;
     }
 
-    let checkInterval = setInterval(() => {
+    if (window._wCheckInterval) clearInterval(window._wCheckInterval);
+    if (window._wVarInterval) clearInterval(window._wVarInterval);
+    if (window._wAcTimeout) clearTimeout(window._wAcTimeout);
+    if (window._wDrawTrailAnimId) cancelAnimationFrame(window._wDrawTrailAnimId);
+    if (window._wDrawSnowAnimId) cancelAnimationFrame(window._wDrawSnowAnimId);
+    if (window.__wiseEventListeners) {
+        document.removeEventListener('mousemove', window.__wiseEventListeners.mousemove);
+        document.removeEventListener('keydown', window.__wiseEventListeners.keydown);
+        document.removeEventListener('keyup', window.__wiseEventListeners.keyup);
+        document.removeEventListener('mousedown', window.__wiseEventListeners.mousedown);
+        document.removeEventListener('mouseup', window.__wiseEventListeners.mouseup);
+    }
+
+    window._wCheckInterval = setInterval(() => {
         let vm = findVM();
         if(vm) {
             window.vm = vm;
-            clearInterval(checkInterval);
+            clearInterval(window._wCheckInterval);
             initClient();
         }
     }, 500);
 
     function initClient(){
-        if(document.getElementById('w-client-gui'))document.getElementById('w-client-gui').remove();
-        if(document.getElementById('w-client-hud'))document.getElementById('w-client-hud').remove();
-        if(document.getElementById('w-keybinds-list'))document.getElementById('w-keybinds-list').remove();
-        if(document.getElementById('w-keystrokes'))document.getElementById('w-keystrokes').remove();
-        if(document.getElementById('w-edit-overlay'))document.getElementById('w-edit-overlay').remove();
-        if(document.getElementById('w-bind-modal'))document.getElementById('w-bind-modal').remove();
-        if(document.getElementById('w-action-modal'))document.getElementById('w-action-modal').remove();
-        if(document.getElementById('w-menu-backdrop'))document.getElementById('w-menu-backdrop').remove();
-        if(document.getElementById('w-snow-canvas'))document.getElementById('w-snow-canvas').remove();
-        if(document.getElementById('w-trail-canvas'))document.getElementById('w-trail-canvas').remove();
+        ['w-client-gui', 'w-client-hud', 'w-keybinds-list', 'w-keystrokes', 'w-edit-overlay', 'w-bind-modal', 'w-action-modal', 'w-menu-backdrop', 'w-snow-canvas', 'w-trail-canvas', 'w-filter-styles', 'w-client-styles'].forEach(id=>{
+            let el=document.getElementById(id); if(el) el.remove();
+        });
 
         window.mouseX=0; window.mouseY=0;
         let clickEffectColor='#ffffff';
@@ -43,10 +49,11 @@
         let clickEffectWidth=3;
         let trailEffectColor='#ffffff'; 
 
-        let currentLang='ru';
+        let currentLang='en'; 
         let currentTheme='dark';
         let currentTab='danger';
         window.wCurrentConfigTab = 'local';
+        window.isEditingHud = false;
         
         window.wAlignmentEnabled=false;
         window.wCurrentFilter='none';
@@ -58,7 +65,16 @@
         window.wState = {
             speed: false, watermark: false, keys: false, click: false, 
             filter: false, trail: false, menuBlur: false, menuSnow: false, 
-            spoof: false, timerHack: false, keybindsList: false, cloneLimit: false
+            spoof: false, timerHack: false, keybindsList: false, cloneLimit: false,
+            autoClicker: false, acCPS: 15,
+            speedVal: 60, timerVal: "", spoofName: ""
+        };
+
+        window._wDragStates = {
+            'w-client-gui': {isDrag: false, ox: 0, oy: 0},
+            'w-client-hud': {isDrag: false, ox: 0, oy: 0},
+            'w-keystrokes': {isDrag: false, ox: 0, oy: 0},
+            'w-keybinds-list': {isDrag: false, ox: 0, oy: 0}
         };
 
         const i18n={
@@ -68,7 +84,7 @@
                 search:"Поиск функций...", searchTitle:"Search",
                 varHack:"Variable Hack", varHackSub:"Изменение проектных переменных",
                 varScanner:"Variable Scanner", varScannerSub:"Редактирование значений",
-                speedHack:"Speed Hack", speedHackSub:"Изменение скорости игры",
+                speedHack:"Speed Hack", speedHackSub:"Изменение скорости игры", fpsLimit:"FPS Limit", fpsLimitSub:"Ограничение кадров",
                 cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Снимает лимит в 300 клонов",
                 broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Перехват и запуск ивентов",
                 watermark:"Watermark", watermarkSub:"Отображать панель информации",
@@ -88,7 +104,8 @@
                 notFound:"Пусто", saveExit:"Сохранить", alignOn:"Коррекция: ВКЛ", alignOff:"Коррекция: ВЫКЛ",
                 bindTitle:"Бинд для: ", bindPress:"Нажмите клавишу...", bindCurr:"Бинд: ", bindDel:"Удалить бинд", bindCancel:"Отмена",
                 cloudConfigs:"Облачные", localConfigs:"Локальные", createConfig:"Создать конфиг", importConfig:"Импорт", cloudNotAvail:"Облачные конфиги пока недоступны", cfgName:"Имя конфига:",
-                copyTxt:"Скопировать код", close:"Закрыть", create:"Создать", impBtn:"Импортировать"
+                copyTxt:"Скопировать код", close:"Закрыть", create:"Создать", impBtn:"Импортировать",
+                autoClicker: "Auto-Clicker", autoClickerSub: "Автоматически нажимает мышь", acCps: "CPS (Клики в сек.)"
             },
             en:{
                 dangerCat:"EXPLOITS", visualsCat:"VISUALS", moreCat:"MORE", settingsCat:"SETTINGS",
@@ -96,7 +113,7 @@
                 search:"Search everything...", searchTitle:"Search",
                 varHack:"Variable Hack", varHackSub:"Modify project variables",
                 varScanner:"Variable Scanner", varScannerSub:"Real-time value editing",
-                speedHack:"Speed Hack", speedHackSub:"Change game speed",
+                speedHack:"Speed Hack", speedHackSub:"Change game speed", fpsLimit:"FPS Limit", fpsLimitSub:"Target framerate",
                 cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Removes the 300 clone limit",
                 broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Intercept and trigger events",
                 watermark:"Watermark", watermarkSub:"Display info panel",
@@ -116,46 +133,21 @@
                 notFound:"None found", saveExit:"Save", alignOn:"Alignment: ON", alignOff:"Alignment: OFF",
                 bindTitle:"Bind Function: ", bindPress:"Press any key...", bindCurr:"Bind: ", bindDel:"Delete Bind", bindCancel:"Cancel",
                 cloudConfigs:"Cloud", localConfigs:"Local", createConfig:"Create Config", importConfig:"Import", cloudNotAvail:"Cloud configs are not available yet", cfgName:"Config Name:",
-                copyTxt:"Copy to Clipboard", close:"Close", create:"Create", impBtn:"Import"
-            },
-            uk:{
-                dangerCat:"EXPLOITS", visualsCat:"VISUALS", moreCat:"MORE", settingsCat:"SETTINGS",
-                dangerTab:"Exploits", hudTab:"HUD", displayTab:"Display", userTab:"User", miscTab:"Miscellaneous", configsTab:"Configs",
-                search:"Пошук функцій...", searchTitle:"Search",
-                varHack:"Variable Hack", varHackSub:"Зміна змінних проекту",
-                varScanner:"Variable Scanner", varScannerSub:"Редагування значень",
-                speedHack:"Speed Hack", speedHackSub:"Зміна швидкості гри",
-                cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Знімає ліміт у 300 клонів",
-                broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Перехоплення і запуск івентів",
-                watermark:"Watermark", watermarkSub:"Відображати панель інформації",
-                keys:"Keystrokes", keysSub:"Відображати натискання клавіш",
-                keybindsList:"Keybinds", keybindsListSub:"Список активних біндів",
-                clickEff:"Click Effect", clickEffSub:"Візуалізація кліку",
-                trail:"Cursor Trail", trailSub:"Слід за курсором миші",
-                stageFilter:"Stage Filter", stageFilterSub:"Кольорові фільтри сцени", filterType:"Тип",
-                spoof:"Username Spoofer", spoofSub:"Підміна локального нікнейма",
-                timerHack:"Timer Hack", timerHackSub:"Заморозка вбудованого таймера",
-                menuBlur:"Menu Blur", menuBlurSub:"Розмиття фону при відкритому меню",
-                menuSnow:"Menu Snow", menuSnowSub:"Сніжинки за менюшкою",
-                theme:"Theme", themeSub:"Оформлення клієнта", light:"Світла", dark:"Темна",
-                language:"Language", languageSub:"Мова інтерфейсу",
-                panic:"Panic Button", panicSub:"Миттєво видалити чит",
-                effColor:"Колір ефекту", color:"Колір:", clickSize:"Дистанція", clickWidth:"Ширина",
-                notFound:"Пусто", saveExit:"Зберегти", alignOn:"Корекція: УВІМК", alignOff:"Корекція: ВИМК",
-                bindTitle:"Бінд для: ", bindPress:"Натисніть клавішу...", bindCurr:"Бінд: ", bindDel:"Видалити бинд", bindCancel:"Скасувати",
-                cloudConfigs:"Хмарні", localConfigs:"Локальні", createConfig:"Створити конфіг", importConfig:"Імпорт", cloudNotAvail:"Хмарні конфіги поки недоступні", cfgName:"Ім'я конфіга:",
-                copyTxt:"Скопіювати код", close:"Закрити", create:"Створити", impBtn:"Імпортувати"
+                copyTxt:"Copy to Clipboard", close:"Close", create:"Create", impBtn:"Import",
+                autoClicker: "Auto-Clicker", autoClickerSub: "Automated mouse clicking", acCps: "CPS (Clicks/sec)"
             }
         };
-        const t=(key)=>i18n[currentLang][key] || i18n['ru'][key];
+        i18n.uk = i18n.en; 
+        const t=(key)=>i18n[currentLang][key] || i18n['en'][key];
 
         const actionToName = {
             speed: 'speedHack', watermark: 'watermark', keys: 'keys', click: 'clickEff',
             trail: 'trail', filter: 'stageFilter', spoof: 'spoof', timerHack: 'timerHack',
-            keybindsList: 'keybindsList', cloneLimit: 'cloneLimit'
+            keybindsList: 'keybindsList', cloneLimit: 'cloneLimit', autoClicker: 'autoClicker'
         };
 
         function formatKey(code) {
+            if(!code) return 'None';
             if(code.startsWith('Key')) return code.slice(3);
             if(code.startsWith('Digit')) return code.slice(5);
             if(code.startsWith('Numpad')) return 'Num ' + code.slice(6);
@@ -206,6 +198,18 @@
             }
             eval(callbackStr);
         };
+        
+        window.updateVisualDropdown = function(id, val) {
+            let itemsEl = document.getElementById('items-'+id);
+            if(!itemsEl) return;
+            let targetDiv = Array.from(itemsEl.querySelectorAll('div')).find(d => d.getAttribute('onclick').includes(`'${val}'`));
+            if(targetDiv) {
+                let selectedSpan = document.querySelector('#selected-'+id+' span');
+                if(selectedSpan) selectedSpan.innerText = targetDiv.innerText;
+                itemsEl.querySelectorAll('div').forEach(d => d.classList.remove('active'));
+                targetDiv.classList.add('active');
+            }
+        };
 
         document.addEventListener('click', function(e) {
             if(!e.target.closest('.w-custom-select-container')) {
@@ -230,8 +234,8 @@
         window._updateKeybindsList = function() {
             const el = document.getElementById('w-keybinds-list');
             if(!el) return;
-            if(!window.wState.keybindsList) { el.style.display = 'none'; return; }
-            el.style.display = 'flex';
+            if(!window.wState.keybindsList && !window.isEditingHud) { el.style.display = 'none'; return; }
+            if(window.wState.keybindsList || window.isEditingHud) { el.style.display = 'flex'; }
             let html = `<div class="w-kb-title">${t('keybindsList')}</div>`;
             let count = 0;
             for(let key in window.wBinds) {
@@ -246,8 +250,7 @@
             el.innerHTML = html;
         };
 
-        // --- BACKEND HOOKS ---
-        setInterval(() => {
+        window._wVarInterval = setInterval(() => {
             if(!window.vm || !window.vm.runtime) return;
             for(let key in window.wLockedVars) {
                 let parts = key.split('_locked_');
@@ -259,16 +262,57 @@
             }
         }, 16);
 
-        window._twToggleFPS=function(forceState){ window.wState.speed = typeof forceState === 'boolean' ? forceState : !window.wState.speed; let cb = document.getElementById('speed-toggle'); if(cb) cb.checked = window.wState.speed; let val = document.getElementById('speed-range') ? document.getElementById('speed-range').value : 60; const fps = window.wState.speed ? val : 30; if(window.vm && window.vm.setFramerate) window.vm.setFramerate(fps); else if(window.vm && window.vm.runtime) window.vm.runtime.frameLoop.framerate=fps; window._updateKeybindsList(); };
-        window._toggleWatermark=function(forceState){ window.wState.watermark = typeof forceState === 'boolean' ? forceState : !window.wState.watermark; let cb = document.getElementById('watermark-toggle'); if(cb) cb.checked = window.wState.watermark; let el = document.getElementById('w-client-hud'); if(el) el.style.display = window.wState.watermark ? 'flex' : 'none'; window._updateKeybindsList(); };
-        window._toggleKeys=function(forceState){ window.wState.keys = typeof forceState === 'boolean' ? forceState : !window.wState.keys; let cb = document.getElementById('keys-toggle'); if(cb) cb.checked = window.wState.keys; let el = document.getElementById('w-keystrokes'); if(el) el.style.display = window.wState.keys ? 'flex' : 'none'; window._updateKeybindsList(); };
+        window._twToggleFPS=function(forceState){ 
+            window.wState.speed = typeof forceState === 'boolean' ? forceState : !window.wState.speed; 
+            let cb = document.getElementById('speed-toggle'); if(cb) cb.checked = window.wState.speed; 
+            let val = window.wState.speedVal || 60; 
+            const fps = window.wState.speed ? val : 30; 
+            if(window.vm && window.vm.setFramerate) window.vm.setFramerate(fps); 
+            else if(window.vm && window.vm.runtime) window.vm.runtime.frameLoop.framerate=fps; 
+            window._updateKeybindsList(); 
+        };
+        
+        window._toggleWatermark=function(forceState){ window.wState.watermark = typeof forceState === 'boolean' ? forceState : !window.wState.watermark; let cb = document.getElementById('watermark-toggle'); if(cb) cb.checked = window.wState.watermark; let el = document.getElementById('w-client-hud'); if(el) el.style.display = (window.wState.watermark || window.isEditingHud) ? 'flex' : 'none'; window._updateKeybindsList(); };
+        window._toggleKeys=function(forceState){ window.wState.keys = typeof forceState === 'boolean' ? forceState : !window.wState.keys; let cb = document.getElementById('keys-toggle'); if(cb) cb.checked = window.wState.keys; let el = document.getElementById('w-keystrokes'); if(el) el.style.display = (window.wState.keys || window.isEditingHud) ? 'flex' : 'none'; window._updateKeybindsList(); };
         window._toggleKeybindsListToggle=function(forceState){ window.wState.keybindsList = typeof forceState === 'boolean' ? forceState : !window.wState.keybindsList; let cb = document.getElementById('keybinds-toggle'); if(cb) cb.checked = window.wState.keybindsList; window._updateKeybindsList(); };
         window._toggleClick=function(forceState){ window.wState.click = typeof forceState === 'boolean' ? forceState : !window.wState.click; let cb = document.getElementById('click-toggle'); if(cb) cb.checked = window.wState.click; window._updateKeybindsList(); };
         window._toggleTrail=function(forceState){ window.wState.trail = typeof forceState === 'boolean' ? forceState : !window.wState.trail; let cb = document.getElementById('trail-toggle'); if(cb) cb.checked = window.wState.trail; let el = document.getElementById('w-trail-canvas'); if(el) el.style.display = window.wState.trail ? 'block' : 'none'; window._updateKeybindsList(); };
-        window._toggleMenuBlur=function(forceState){ window.wState.menuBlur = typeof forceState === 'boolean' ? forceState : !window.wState.menuBlur; let cb = document.getElementById('menublur-toggle'); if(cb) cb.checked = window.wState.menuBlur; let isMenuOpen = !document.getElementById('w-client-gui').classList.contains('hidden'); let el = document.getElementById('w-menu-backdrop'); if(el) el.style.display = (window.wState.menuBlur && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
-        window._toggleMenuSnow=function(forceState){ window.wState.menuSnow = typeof forceState === 'boolean' ? forceState : !window.wState.menuSnow; let cb = document.getElementById('menusnow-toggle'); if(cb) cb.checked = window.wState.menuSnow; let isMenuOpen = !document.getElementById('w-client-gui').classList.contains('hidden'); let el = document.getElementById('w-snow-canvas'); if(el) el.style.display = (window.wState.menuSnow && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
-        window._toggleFilter=function(forceState){ window.wState.filter = typeof forceState === 'boolean' ? forceState : !window.wState.filter; let cb = document.getElementById('filter-toggle'); if(cb) cb.checked = window.wState.filter; const canvas=document.querySelector('canvas'); if(!canvas) return; if(window.wState.filter){ switch(window.wCurrentFilter){ case 'grayscale': canvas.style.filter='grayscale(100%)'; break; case 'invert': canvas.style.filter='invert(100%)'; break; case 'sepia': canvas.style.filter='sepia(100%)'; break; case 'contrast': canvas.style.filter='contrast(150%)'; break; case 'blur': canvas.style.filter='blur(3px)'; break; } } else { canvas.style.filter='none'; } window._updateKeybindsList(); };
+        window._toggleMenuBlur=function(forceState){ window.wState.menuBlur = typeof forceState === 'boolean' ? forceState : !window.wState.menuBlur; let cb = document.getElementById('menublur-toggle'); if(cb) cb.checked = window.wState.menuBlur; let guiEl = document.getElementById('w-client-gui'); let isMenuOpen = guiEl && !guiEl.classList.contains('hidden'); let el = document.getElementById('w-menu-backdrop'); if(el) el.style.display = (window.wState.menuBlur && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
+        window._toggleMenuSnow=function(forceState){ window.wState.menuSnow = typeof forceState === 'boolean' ? forceState : !window.wState.menuSnow; let cb = document.getElementById('menusnow-toggle'); if(cb) cb.checked = window.wState.menuSnow; let guiEl = document.getElementById('w-client-gui'); let isMenuOpen = guiEl && !guiEl.classList.contains('hidden'); let el = document.getElementById('w-snow-canvas'); if(el) el.style.display = (window.wState.menuSnow && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
         
+        window._toggleFilter=function(forceState){ 
+            window.wState.filter = typeof forceState === 'boolean' ? forceState : !window.wState.filter; 
+            let cb = document.getElementById('filter-toggle'); if(cb) cb.checked = window.wState.filter; 
+            
+            let styleEl = document.getElementById('w-filter-styles');
+            if(!styleEl) { 
+                styleEl = document.createElement('style'); 
+                styleEl.id = 'w-filter-styles'; 
+                document.head.appendChild(styleEl); 
+            }
+            
+            if(window.wState.filter){ 
+                let f = '';
+                switch(window.wCurrentFilter){ 
+                    case 'grayscale': f='grayscale(100%)'; break; 
+                    case 'invert': f='invert(100%)'; break; 
+                    case 'sepia': f='sepia(100%)'; break; 
+                    case 'contrast': f='contrast(150%)'; break; 
+                    case 'blur': f='blur(3px)'; break; 
+                    default: f='none';
+                } 
+                styleEl.innerHTML = `canvas:not(#w-snow-canvas):not(#w-trail-canvas) { filter: ${f} !important; }`;
+            } else { 
+                styleEl.innerHTML = ''; 
+            } 
+            window._updateKeybindsList(); 
+        };
+        
+        window._setStageFilter = function(val) {
+            window.wCurrentFilter = val;
+            if(window.wState.filter) window._toggleFilter(true);
+        };
+
         window._toggleCloneLimit=function(forceState){
             window.wState.cloneLimit = typeof forceState === 'boolean' ? forceState : !window.wState.cloneLimit;
             let cb = document.getElementById('clonelimit-toggle'); if(cb) cb.checked = window.wState.cloneLimit;
@@ -292,7 +336,7 @@
             if (!window._origGetUsername && window.vm && window.vm.runtime.ioDevices.userData) {
                 window._origGetUsername = window.vm.runtime.ioDevices.userData.getUsername;
                 window.vm.runtime.ioDevices.userData.getUsername = function() {
-                    if (window.wState.spoof) { let input = document.getElementById('spoof-input'); return input ? (input.value || "Wise User") : "Wise User"; }
+                    if (window.wState.spoof) { return window.wState.spoofName || "Wise User"; }
                     return window._origGetUsername.apply(this, arguments);
                 };
             }
@@ -305,10 +349,33 @@
             if (!window._origProjectTimer && window.vm && window.vm.runtime.ioDevices.clock) {
                 window._origProjectTimer = window.vm.runtime.ioDevices.clock.projectTimer;
                 window.vm.runtime.ioDevices.clock.projectTimer = function() {
-                    if (window.wState.timerHack) { let val = document.getElementById('timer-input') ? parseFloat(document.getElementById('timer-input').value) : 0; return isNaN(val) ? 0 : val; }
+                    if (window.wState.timerHack) { 
+                        let val = parseFloat(window.wState.timerVal); 
+                        return isNaN(val) ? 0 : val; 
+                    }
                     return window._origProjectTimer.call(this);
                 };
             }
+            window._updateKeybindsList();
+        };
+
+        function runAutoClicker() {
+            if(!window.wState.autoClicker) return;
+            const canvas = document.querySelector('#app canvas, #react-root canvas') || Array.from(document.querySelectorAll('canvas')).find(c => !c.id.startsWith('w-'));
+            if (canvas) {
+                canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: window.mouseX, clientY: window.mouseY, bubbles: true }));
+                setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { clientX: window.mouseX, clientY: window.mouseY, bubbles: true })), 20);
+            }
+            let cps = window.wState.acCPS || 15;
+            if (cps <= 0) cps = 1;
+            window._wAcTimeout = setTimeout(runAutoClicker, 1000 / cps);
+        }
+
+        window._toggleAutoClicker = function(forceState) {
+            window.wState.autoClicker = typeof forceState === 'boolean' ? forceState : !window.wState.autoClicker;
+            let cb = document.getElementById('autoclicker-toggle'); if(cb) cb.checked = window.wState.autoClicker;
+            if (window.wState.autoClicker) { clearTimeout(window._wAcTimeout); runAutoClicker(); }
+            else clearTimeout(window._wAcTimeout);
             window._updateKeybindsList();
         };
 
@@ -318,6 +385,7 @@
             if(action === 'click') window._toggleClick(); if(action === 'trail') window._toggleTrail();
             if(action === 'filter') window._toggleFilter(); if(action === 'spoof') window._toggleSpoof();
             if(action === 'timerHack') window._toggleTimer(); if(action === 'cloneLimit') window._toggleCloneLimit();
+            if(action === 'autoClicker') window._toggleAutoClicker();
             if(action === 'panic') window._panic();
         };
 
@@ -334,6 +402,7 @@
             if(!isExpanded){
                 card.classList.add('w-expanded'); btn.style.transform = 'rotate(180deg)';
                 if(card.id === 'card-varhack') window._scanVars();
+                if(card.id === 'card-broadcast') window._scanBroadcasts();
                 setTimeout(() => { if(card.classList.contains('w-expanded')) body.style.overflow = 'visible'; }, 300);
             } else {
                 body.style.overflow = 'hidden'; body.querySelectorAll('.w-select-items').forEach(el => el.style.display = 'none');
@@ -359,6 +428,25 @@
         const iconLock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM9 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9z"/></svg>`;
         const iconUnlock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>`;
         const iconFire = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.56 15.36c-.45-2.64-1.95-4.2-3.1-5.18-.72-.61-1.39-1.18-1.57-2.12-.04-.21-.07-.44-.07-.72 0-2.19 1.4-3.5 1.54-3.64l.32-.31-.4-.2c-.89-.44-2.07-.63-3.21-.36-1.53.36-2.61 1.54-3.03 3.29-.29 1.25-.13 2.61.42 3.8.31.68.78 1.41 1.34 2.11-.27.42-.51.84-.71 1.27C9.37 11.23 8 9.53 8 9.53L7.75 9.2l-.24.36c-.7 1.05-1.1 2.22-1.1 3.32 0 1.7.67 3.31 1.89 4.54 1.22 1.22 2.84 1.9 4.55 1.9 2.59 0 4.88-1.58 5.71-4.04.28-.82.35-1.63.22-2.42h-.22zM12.86 17.5c-1.33 0-2.42-1.09-2.42-2.42 0-.83.43-1.6 1.13-2.03.22-.14.4-.33.52-.56.12-.23.15-.5.08-.75-.07-.25-.23-.46-.44-.6-.21-.13-.48-.16-.72-.08-.73.25-1.33.72-1.74 1.38-.45.71-.69 1.52-.69 2.37 0 2.05 1.67 3.72 3.72 3.72 2.05 0 3.72-1.67 3.72-3.72 0-.25-.03-.5-.08-.75l-1.07.72c-.68.46-1.06 1.22-1.06 2.05z"/></svg>`;
+        const customLogoSVG=`<svg style="color:var(--w-text);" width="100%" height="100%" viewBox="0 0 50.4 23.7"><g transform="translate(-213.9 -167.3)"><path fill="currentColor" d="M255.3 178.9c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4zM255.3 183.8c0-.7.6-1.4 1.4-1.4h3.6c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-3.6c-.7 0-1.4-.6-1.4-1.4zM255.3 188.8c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4z"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M250.7 178.5c0 0-4 2-4 3.1 0 .8 4.4 1.6 5.1 3.1 1.2 2.6-5.3 4.5-5.3 4.5"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M241.8 181.9v7.3M241.8 178.5v.1"/><path fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linecap="round" d="M216.4 169.8l7.5 18.7M227.6 179.2l-3.7 9.3M231.4 188.5l-3.7-9.3M231.4 188.5l7.5-18.7"/></g></svg>`;
+        const iconDanger=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 3.83L19.5 19H4.5L12 5.83zM11 10h2v5h-2v-5zm0 6h2v2h-2v-2z"></path></svg>`;
+        const iconEye=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path></svg>`;
+        const iconGear=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12-.61l2.03 1.58c-.04.3-.06.62-.06.94 0 .32.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61L19.14,12.94z M12,15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`;
+        const iconRefresh=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`;
+        const iconSearch=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 12.01 5 9.5S7.01 5 9.5 5 14 6.99 14 9.5 12.01 14 9.5 14z"/></svg>`;
+        const iconMove=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>`;
+        const iconPalette=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.08-.09-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4c-.83 0-1.5-.67-1.5-1.5S8.67 4 9.5 4 11 4.67 11 5.5 10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4 16 4.67 16 5.5 15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8 19 8.67 19 9.5 18.33 11 17.5 11z"/></svg>`;
+        const iconUser=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+        const iconDisplay=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>`;
+        const iconHud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14zM7 7h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/></svg>`;
+        const iconPuzzle=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>`;
+        const iconCloud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>`;
+        const iconPicker=`<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--w-subtext)"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06 1.92 1.92L6.92 19z"/></svg>`;
+        const iconSave=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>`;
+        const iconPlus=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`;
+        const iconImport=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
+        const iconLoad=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+        const iconDelete=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
 
         window._scanVars=function(){
             const container=document.getElementById('var-list-container'); if(!container)return; container.style.display='flex'; container.innerHTML=''; let count=0;
@@ -415,7 +503,7 @@
 
         window._updateHud=function(){
             let displayUser = userName;
-            if (window.wState.spoof && document.getElementById('spoof-input')) { displayUser = document.getElementById('spoof-input').value || "Wise User"; }
+            if (window.wState.spoof) { displayUser = window.wState.spoofName || "Wise User"; }
             const hud=document.getElementById('w-client-hud');
             if(hud)hud.innerHTML=`<b>Wise</b><span class="w-hud-sep">|</span><span class="w-hud-txt">X: ${window.mouseX} Y: ${window.mouseY}</span><span class="w-hud-sep">|</span><span class="w-hud-txt">${projectName}</span><span class="w-hud-sep">|</span><span class="w-hud-txt">${displayUser}</span>`;
         };
@@ -441,18 +529,6 @@
         window._updateClickSize=function(val){ clickEffectSize=val; document.documentElement.style.setProperty('--w-click-size', val + 'px'); };
         window._updateClickWidth=function(val){ clickEffectWidth=val; document.documentElement.style.setProperty('--w-click-width', val + 'px'); };
 
-        window._panic=function(){
-            ['w-client-gui', 'w-client-hud', 'w-keybinds-list', 'w-keystrokes', 'w-edit-overlay', 'w-bind-modal', 'w-action-modal', 'w-menu-backdrop', 'w-snow-canvas', 'w-trail-canvas'].forEach(id=>{
-                let el=document.getElementById(id); if(el) el.remove();
-            });
-            if(window.vm && window.vm.setFramerate) window.vm.setFramerate(30);
-            else if(window.vm && window.vm.runtime) window.vm.runtime.frameLoop.framerate=30;
-            const canvas=document.querySelector('canvas'); if(canvas) canvas.style.filter='none';
-            document.removeEventListener('mousemove', wOnMouseMove); document.removeEventListener('keydown', wOnKeyDown);
-            document.removeEventListener('keyup', wOnKeyUp); document.removeEventListener('mousedown', wOnMouseDown);
-            document.removeEventListener('mouseup', wOnMouseUp);
-        };
-
         window._setTheme=function(theme){
             currentTheme=theme;
             const els=[document.getElementById('w-client-gui'),document.getElementById('w-client-hud'),document.getElementById('w-keybinds-list'),document.getElementById('w-keystrokes'),document.getElementById('w-bind-modal'),document.getElementById('w-action-modal')];
@@ -460,7 +536,6 @@
             document.querySelectorAll('input[type="range"]').forEach(el=>window._updateSlider(el));
         };
 
-        // --- МОДАЛКИ И КОНФИГИ ---
         window._closeActionModal = function() {
             document.getElementById('w-action-modal').style.display = 'none';
         };
@@ -470,9 +545,7 @@
                 state: window.wState, binds: window.wBinds, filter: window.wCurrentFilter,
                 theme: currentTheme, lang: currentLang,
                 clickColor: clickEffectColor, clickSize: clickEffectSize, clickWidth: clickEffectWidth, trailColor: trailEffectColor,
-                accent: getComputedStyle(document.documentElement).getPropertyValue('--w-main-color').trim(),
-                spoofName: document.getElementById('spoof-input') ? document.getElementById('spoof-input').value : "",
-                timerVal: document.getElementById('timer-input') ? document.getElementById('timer-input').value : ""
+                accent: getComputedStyle(document.documentElement).getPropertyValue('--w-main-color').trim()
             };
         };
 
@@ -482,21 +555,54 @@
             if(!conf) return;
             try {
                 let d = typeof conf.data === 'string' ? JSON.parse(conf.data) : conf.data;
-                window.wState = d.state || window.wState; window.wBinds = d.binds || window.wBinds; window.wCurrentFilter = d.filter || window.wCurrentFilter;
+                let st = d.state || {};
+                window.wBinds = d.binds || {}; 
+                window.wCurrentFilter = d.filter || 'none';
+                
                 clickEffectColor = d.clickColor || '#ffffff'; clickEffectSize = d.clickSize || 60; clickEffectWidth = d.clickWidth || 3; trailEffectColor = d.trailColor || '#ffffff';
-                window._updateAccentColor(d.accent || '#ffffff'); window._updateClickSize(clickEffectSize); window._updateClickWidth(clickEffectWidth);
-                window._setTheme(d.theme || 'dark'); currentLang = d.lang || 'ru';
+                
+                if(window._setAccentColor) window._setAccentColor(d.accent || '#ffffff'); 
+                
+                window._updateClickSize(clickEffectSize); window._updateClickWidth(clickEffectWidth);
+                window._setTheme(d.theme || 'dark'); currentLang = d.lang || 'en';
+                
+                if(st.acCPS) window.wState.acCPS = st.acCPS;
                 
                 let sInput = document.getElementById('spoof-input'); if(sInput && d.spoofName !== undefined) sInput.value = d.spoofName;
                 let tInput = document.getElementById('timer-input'); if(tInput && d.timerVal !== undefined) tInput.value = d.timerVal;
+                if(d.speedVal && document.getElementById('speed-range')) { 
+                    document.getElementById('speed-range').value = d.speedVal; 
+                    document.getElementById('speed-val').innerText = d.speedVal; 
+                    window._updateSlider(document.getElementById('speed-range')); 
+                }
 
-                window._twToggleFPS(window.wState.speed); window._toggleWatermark(window.wState.watermark); window._toggleKeys(window.wState.keys);
-                window._toggleKeybindsListToggle(window.wState.keybindsList); window._toggleClick(window.wState.click); window._toggleTrail(window.wState.trail);
-                window._toggleMenuBlur(window.wState.menuBlur); window._toggleMenuSnow(window.wState.menuSnow); window._toggleFilter(window.wState.filter);
-                window._toggleSpoof(window.wState.spoof); window._toggleTimer(window.wState.timerHack); window._toggleCloneLimit(window.wState.cloneLimit);
+                Object.assign(window.wState, st);
+
+                const toggleSafe = (fn, state) => { try { fn(!!state); } catch(e) {} };
+                toggleSafe(window._twToggleFPS, st.speed); 
+                toggleSafe(window._toggleWatermark, st.watermark); 
+                toggleSafe(window._toggleKeys, st.keys);
+                toggleSafe(window._toggleKeybindsListToggle, st.keybindsList); 
+                toggleSafe(window._toggleClick, st.click); 
+                toggleSafe(window._toggleTrail, st.trail);
+                toggleSafe(window._toggleMenuBlur, st.menuBlur); 
+                toggleSafe(window._toggleMenuSnow, st.menuSnow); 
+                toggleSafe(window._toggleFilter, st.filter);
+                toggleSafe(window._toggleSpoof, st.spoof); 
+                toggleSafe(window._toggleTimer, st.timerHack); 
+                toggleSafe(window._toggleCloneLimit, st.cloneLimit);
+                toggleSafe(window._toggleAutoClicker, st.autoClicker);
                 
-                window._setLang(currentLang); window._updateBindBadges(); window._switchTab('configs');
-            } catch(e) { console.error("Config load error", e); }
+                if(window.updateVisualDropdown) {
+                    window.updateVisualDropdown('theme-select', d.theme || 'dark');
+                    window.updateVisualDropdown('lang-select', d.lang || 'en');
+                    window.updateVisualDropdown('filter-select', window.wCurrentFilter);
+                }
+                
+                window._setLang(currentLang); 
+                window._updateBindBadges(); 
+                window._switchTab('configs');
+            } catch(e) {}
         };
 
         window._showCreateConfig = function() {
@@ -557,14 +663,10 @@
 
         window._switchConfigTab = function(tab) {
             window.wCurrentConfigTab = tab;
-            window._switchTab('configs');
+            let page = document.getElementById('page-configs');
+            if(page) page.innerHTML = pages.configs(); 
+            window._renderConfigsList();
         };
-
-        const iconSave=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>`;
-        const iconPlus=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`;
-        const iconImport=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
-        const iconLoad=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
-        const iconDelete=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
 
         window._renderConfigsList = function() {
             let el = document.getElementById('local-configs-list');
@@ -589,7 +691,7 @@
 
         window._filterGlobal=function(query){
             let q=query.toLowerCase();
-            document.querySelectorAll('#w-content-area .w-card').forEach(card=>{
+            document.querySelectorAll('.w-page:not(#page-configs) .w-card').forEach(card=>{
                 const title=card.querySelector('.w-card-title')?.innerText.toLowerCase() || '';
                 const sub=card.querySelector('.w-card-sub')?.innerText.toLowerCase() || '';
                 card.style.display=(title.includes(q)||sub.includes(q))?'flex':'none';
@@ -627,11 +729,18 @@
         };
 
         window._toggleEditMode=function(){
-            isEditingHud=true;
+            window.isEditingHud=true;
             document.getElementById('w-client-gui').style.display='none';
-            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ document.getElementById(id).classList.add('w-editing'); });
+            
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ 
+                let el = document.getElementById(id);
+                if(el) {
+                    el.classList.add('w-editing');
+                }
+            });
+            
             let overlay=document.createElement('div'); overlay.id='w-edit-overlay';
-            overlay.innerHTML=`<div class="w-edit-panel"><button id="w-align-btn" class="w-pill-btn" onclick="window._toggleAlign()">${window.wAlignmentEnabled?t('alignOn'):t('alignOff')}</button><button class="w-pill-btn w-pill-primary" onclick="window._exitEditMode()">${t('saveExit')}</button></div><div id="w-guide-x"></div>`;
+            overlay.innerHTML=`<div class="w-edit-panel"><button id="w-align-btn" class="w-pill-btn" onclick="window._toggleAlign()">${window.wAlignmentEnabled?t('alignOn'):t('alignOff')}</button><button class="w-pill-btn w-pill-primary" onclick="window._exitEditMode()">${t('saveExit')}</button></div><div id="w-guide-x"></div><div id="w-guide-y"></div>`;
             document.body.appendChild(overlay);
             if(window.wAlignmentEnabled){ document.getElementById('w-align-btn').style.background="var(--w-main-color)"; document.getElementById('w-align-btn').style.color="var(--w-bg-base)"; }
         };
@@ -643,29 +752,43 @@
         };
 
         window._exitEditMode=function(){
-            isEditingHud=false;
-            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ document.getElementById(id).classList.remove('w-editing'); });
+            window.isEditingHud=false;
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ 
+                let el = document.getElementById(id);
+                if(el) el.classList.remove('w-editing');
+            });
+            
+            let h1 = document.getElementById('w-client-hud'); if(h1) h1.style.display = window.wState.watermark ? 'flex' : 'none';
+            let h2 = document.getElementById('w-keystrokes'); if(h2) h2.style.display = window.wState.keys ? 'flex' : 'none';
+            let h3 = document.getElementById('w-keybinds-list'); if(h3) h3.style.display = window.wState.keybindsList ? 'flex' : 'none';
+
             document.getElementById('w-client-gui').style.display='flex';
             document.getElementById('w-edit-overlay').remove();
         };
 
         window._showGuideX=function(x){ let guide=document.getElementById('w-guide-x'); if(guide){guide.style.display='block'; guide.style.left=x+'px';} };
         window._hideGuideX=function(){ let guide=document.getElementById('w-guide-x'); if(guide)guide.style.display='none'; };
+        window._showGuideY=function(y){ let guide=document.getElementById('w-guide-y'); if(guide){guide.style.display='block'; guide.style.top=y+'px';} };
+        window._hideGuideY=function(){ let guide=document.getElementById('w-guide-y'); if(guide)guide.style.display='none'; };
 
         document.documentElement.style.setProperty('--w-click-size', clickEffectSize + 'px');
         document.documentElement.style.setProperty('--w-click-width', clickEffectWidth + 'px');
         document.documentElement.style.setProperty('--w-main-color', '#ffffff');
 
         const style=document.createElement('style');
+        style.id = 'w-client-styles';
         style.innerHTML=`
             :root{--w-bg-base:#0f0f11;--w-border:rgba(255,255,255,0.05);--w-text:#e2e2e2;--w-subtext:#8b8b91;--w-hover:#18181c;--w-active:#1d1d23;--w-main-color:#ffffff;--w-track:#1a1a20;--w-ks-bg:rgba(15,15,17,0.7)}.w-light{--w-bg-base:#f4f4f5;--w-border:rgba(0,0,0,0.1);--w-text:#000000;--w-subtext:#666666;--w-hover:#e5e5ea;--w-active:#d1d1d6;--w-main-color:#000000;--w-track:#d1d1d6;--w-ks-bg:rgba(244,244,245,0.7)}#w-client-gui *{box-sizing:border-box}
-            #w-keystrokes{position:fixed;top:50px;left:12px;display:flex;flex-direction:column;gap:4px;z-index:99999997;pointer-events:none;font-family:-apple-system,sans-serif}.w-ks-row{display:flex;gap:4px;justify-content:center}.w-ks-key{background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border-radius:4px;width:32px;height:32px;transition:0.1s all ease-out}.w-ks-key.mouse{width:50px;font-size:11px}.w-ks-key.space{width:104px;height:24px;font-size:14px}.w-ks-key.active{background:var(--w-main-color);color:var(--w-bg-base);border-color:var(--w-bg-base);transform:scale(0.95)}
-            #w-client-hud{position:fixed;top:12px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;font-weight:500;padding:8px 14px;border-radius:6px;z-index:99999998;pointer-events:none;display:flex;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:0.3s}#w-client-hud b{font-weight:700;color:var(--w-main-color);letter-spacing:0.5px}.w-hud-sep{color:var(--w-subtext);opacity:0.4;font-size:14px;margin:0 12px;user-select:none}.w-hud-txt{color:var(--w-text);opacity:0.9}
-            #w-keybinds-list{position:fixed;top:160px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;padding:12px 14px;border-radius:6px;z-index:99999997;pointer-events:none;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:6px;}
+            #w-keystrokes{position:fixed;top:50px;left:12px;flex-direction:column;gap:4px;z-index:99999997;pointer-events:none;font-family:-apple-system,sans-serif}.w-ks-row{display:flex;gap:4px;justify-content:center}.w-ks-key{background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border-radius:4px;width:32px;height:32px;transition:0.1s all ease-out}.w-ks-key.mouse{width:50px;font-size:11px}.w-ks-key.space{width:104px;height:24px;font-size:14px}.w-ks-key.active{background:var(--w-main-color);color:var(--w-bg-base);border-color:var(--w-bg-base);transform:scale(0.95)}
+            #w-client-hud{position:fixed;top:12px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;font-weight:500;padding:8px 14px;border-radius:6px;z-index:99999998;pointer-events:none;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:0.3s}#w-client-hud b{font-weight:700;color:var(--w-main-color);letter-spacing:0.5px}.w-hud-sep{color:var(--w-subtext);opacity:0.4;font-size:14px;margin:0 12px;user-select:none}.w-hud-txt{color:var(--w-text);opacity:0.9}
+            #w-keybinds-list{position:fixed;top:160px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;padding:12px 14px;border-radius:6px;z-index:99999997;pointer-events:none;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.15);flex-direction:column;gap:6px;}
             .w-kb-title{font-weight:700;margin-bottom:6px;border-bottom:1px solid var(--w-border);padding-bottom:6px;color:var(--w-text);} .w-kb-item{display:flex;justify-content:space-between;align-items:center;gap:15px;} .w-kb-on{color:var(--w-text);} .w-kb-off{color:var(--w-subtext);} .w-kb-key{background:var(--w-hover);padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;}
-            .w-click-ripple{position:fixed;width:var(--w-click-size);height:var(--w-click-size);background:none;border-style:solid;border-color:#ffffff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%) scale(0);opacity:1;z-index:100000000;animation:click-ripple-anim 0.6s ease-out}@keyframes click-ripple-anim{0%{transform:translate(-50%,-50%) scale(0);opacity:1;border-width:var(--w-click-width)}100%{transform:translate(-50%,-50%) scale(1);opacity:0;border-width:1px}}.w-editing{pointer-events:auto!important;cursor:move!important;outline:2px dashed var(--w-main-color)!important;background:var(--w-active)!important}#w-guide-x{position:fixed;top:0;bottom:0;width:1px;background:#ff3333;z-index:999999998;display:none;pointer-events:none}.w-edit-panel{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:999999999}.w-pill-btn{background:var(--w-bg-base);color:var(--w-text);padding:12px 24px;border-radius:30px;border:1px solid var(--w-border);font-family:-apple-system,sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:0.2s}.w-pill-primary{background:var(--w-main-color);color:var(--w-bg-base);border:none}.w-pill-btn:hover{transform:scale(1.05)}
+            .w-click-ripple{position:fixed;width:var(--w-click-size);height:var(--w-click-size);background:none;border-style:solid;border-color:#ffffff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%) scale(0);opacity:1;z-index:100000000;animation:click-ripple-anim 0.6s ease-out}@keyframes click-ripple-anim{0%{transform:translate(-50%,-50%) scale(0);opacity:1;border-width:var(--w-click-width)}100%{transform:translate(-50%,-50%) scale(1);opacity:0;border-width:1px}}
+            .w-editing{display:flex!important; opacity:1!important; visibility:visible!important; pointer-events:auto!important; cursor:move!important; outline:2px dashed var(--w-main-color)!important; background:var(--w-active)!important; z-index:999999999!important;}
+            #w-guide-x, #w-guide-y {position:fixed; background:#ff3333; z-index:999999998; display:none; pointer-events:none;} #w-guide-x{top:0; bottom:0; width:1px;} #w-guide-y{left:0; right:0; height:1px;}
+            .w-edit-panel{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:999999999}.w-pill-btn{background:var(--w-bg-base);color:var(--w-text);padding:12px 24px;border-radius:30px;border:1px solid var(--w-border);font-family:-apple-system,sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:0.2s}.w-pill-primary{background:var(--w-main-color);color:var(--w-bg-base);border:none}.w-pill-btn:hover{transform:scale(1.05)}
             #w-client-gui{position:fixed;top:50px;left:50px;width:850px;height:500px;background:var(--w-bg-base);color:var(--w-text);z-index:99999999;border-radius:8.8px;font-family:-apple-system,sans-serif;box-shadow:0 15px 40px rgba(0,0,0,0.9);border:1px solid var(--w-border);display:flex;flex-direction:row;user-select:none;overflow:hidden;transition:opacity 0.25s ease,transform 0.25s ease,background 0.3s,color 0.3s;opacity:1;transform:scale(1)}#w-client-gui.hidden{opacity:0;transform:scale(0.96);pointer-events:none}
-            .w-sidebar{width:180px;background:transparent;border-right:1px solid var(--w-border);display:flex;flex-direction:column;justify-content:space-between;transition:0.3s}.w-sidebar-top{display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;max-height:calc(100% - 50px);}.w-sidebar-top::-webkit-scrollbar{width:0px;}.w-sidebar-bot{display:flex;gap:6px;padding:10px;border-top:1px solid var(--w-border)}.w-bot-btn{flex:1;display:flex;justify-content:center;align-items:center;background:var(--w-hover);color:var(--w-subtext);border-radius:6px;padding:6px 0;cursor:pointer;transition:0.2s}.w-bot-btn:hover,.w-bot-btn.active{background:var(--w-active);color:var(--w-text)}.w-drag-header{padding:10px;cursor:grab;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--w-border);height:50px}.w-drag-header svg{max-width:216px;max-height:48px}.w-drag-header svg path,.w-drag-header svg text{fill:var(--w-text)!important}.w-cat-title{font-size:10px;color:var(--w-subtext);margin:10px 15px 4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.w-tab{padding:7px 15px;margin:1px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--w-subtext);display:flex;align-items:center;gap:10px;font-weight:500;transition:0.2s ease}.w-tab:hover{background:var(--w-hover);color:var(--w-text)}.w-tab.active{background:var(--w-active);color:var(--w-text)}.w-icon{width:16px;height:16px;fill:currentColor}.w-main{flex:1;display:flex;flex-direction:column;background:transparent}.w-topbar{padding:0 25px;height:50px;border-bottom:1px solid var(--w-border);font-size:18px;color:var(--w-subtext);display:flex;align-items:center;transition:0.3s}.w-topbar strong{color:var(--w-text);font-weight:600;margin-left:5px}.w-content{padding:15px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px}.w-tab-grid{display:flex;gap:12px;align-items:flex-start;width:100%;margin-bottom:12px}.w-masonry-col{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0}
+            .w-sidebar{width:180px;background:transparent;border-right:1px solid var(--w-border);display:flex;flex-direction:column;justify-content:space-between;transition:0.3s}.w-sidebar-top{display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;max-height:calc(100% - 50px);}.w-sidebar-top::-webkit-scrollbar{width:0px;}.w-sidebar-bot{display:flex;gap:6px;padding:10px;border-top:1px solid var(--w-border)}.w-bot-btn{flex:1;display:flex;justify-content:center;align-items:center;background:var(--w-hover);color:var(--w-subtext);border-radius:6px;padding:6px 0;cursor:pointer;transition:0.2s}.w-bot-btn:hover,.w-bot-btn.active{background:var(--w-active);color:var(--w-text)}.w-drag-header{padding:10px;cursor:grab;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--w-border);height:50px;position:relative}.w-drag-header svg{max-width:180px;max-height:35px;pointer-events:none;margin-right:20px}.w-drag-header svg path,.w-drag-header svg text{fill:var(--w-text)!important}.w-cat-title{font-size:10px;color:var(--w-subtext);margin:10px 15px 4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.w-tab{padding:7px 15px;margin:1px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--w-subtext);display:flex;align-items:center;gap:10px;font-weight:500;transition:0.2s ease}.w-tab:hover{background:var(--w-hover);color:var(--w-text)}.w-tab.active{background:var(--w-active);color:var(--w-text)}.w-icon{width:16px;height:16px;fill:currentColor}.w-main{flex:1;display:flex;flex-direction:column;background:transparent}.w-topbar{padding:0 25px;height:50px;border-bottom:1px solid var(--w-border);font-size:18px;color:var(--w-subtext);display:flex;align-items:center;transition:0.3s}.w-topbar strong{color:var(--w-text);font-weight:600;margin-left:5px}.w-content{padding:15px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px}.w-page{display:none}.w-tab-grid{display:flex;gap:12px;align-items:flex-start;width:100%;margin-bottom:12px}.w-masonry-col{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0}
             .w-search-box{width:100%;margin-bottom:5px;background:var(--w-hover);border:1px solid var(--w-border);color:var(--w-text);padding:12px 15px;border-radius:6px;font-size:13px;outline:none;transition:0.3s}.w-card{background:transparent;border:1px solid var(--w-border);border-radius:8px;display:flex;flex-direction:column;transition:0.3s;width:100%;position:relative;z-index:1}.w-card.w-expanded{z-index:5}.w-card-header{padding:15px;display:flex;justify-content:space-between;align-items:center;border-radius:8px}.w-card-info{display:flex;flex-direction:column;gap:4px}.w-card-title{font-size:14px;font-weight:600;color:var(--w-text);display:flex;align-items:center;gap:8px}.w-bind-badge{font-size:10px;color:var(--w-bg-base);background:var(--w-main-color);padding:2px 6px;border-radius:4px;font-weight:700}.w-bind-badge:empty{display:none}.w-card-sub{font-size:12px;color:var(--w-subtext);font-weight:500}.w-card-controls{display:flex;align-items:center;gap:10px}.w-expand-btn{background:transparent;border:1px solid var(--w-border);color:var(--w-subtext);border-radius:6px;width:26px;height:26px;display:flex;justify-content:center;align-items:center;cursor:pointer;transition:0.2s}.w-expand-btn:hover{background:var(--w-hover);color:var(--w-text)}.w-btn{background:var(--w-hover);color:var(--w-text);border:1px solid var(--w-border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;transition:0.2s;display:flex;align-items:center;justify-content:center}.w-btn:hover{background:var(--w-active);border-color:var(--w-subtext)}.w-btn-icon{padding:6px}
             .w-custom-select-container{position:relative;user-select:none;width:130px;font-family:-apple-system,sans-serif;z-index:1}.w-select-selected{background:var(--w-hover);color:var(--w-text);border:1px solid var(--w-border);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:0.2s}.w-select-selected:hover{background:var(--w-active)}.w-select-items{display:none;position:absolute;background:#1a1a20;border:1px solid var(--w-border);top:100%;left:0;right:0;z-index:999;border-radius:6px;margin-top:4px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5)}.w-light .w-select-items{background:#ffffff;box-shadow:0 4px 12px rgba(0,0,0,0.1)}.w-select-items div{padding:8px 10px;font-size:12px;color:var(--w-subtext);cursor:pointer;transition:0.2s}.w-select-items div:hover,.w-select-items div.active{background:var(--w-active);color:var(--w-text)}.w-switch{position:relative;display:inline-block;width:36px;height:20px}.w-switch input{opacity:0;width:0;height:0}.w-slider-toggle{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:var(--w-hover);transition:.2s;border-radius:20px}.w-slider-toggle:before{position:absolute;content:"";height:14px;width:14px;left:3px;bottom:3px;background:var(--w-subtext);transition:.2s;border-radius:50%}input:checked+.w-slider-toggle{background:var(--w-text)}input:checked+.w-slider-toggle:before{transform:translateX(16px);background:var(--w-bg-base)}
             .w-card-body{max-height:0;padding:0 15px!important;overflow:hidden;transition:max-height 0.35s cubic-bezier(0,1,0,1),padding 0.3s ease,opacity 0.2s ease;opacity:0;border-top:1px solid transparent;margin-top:-5px}.w-card.w-expanded .w-card-body{max-height:400px;padding:15px!important;opacity:1;border-top-color:var(--w-border);transition:max-height 0.4s ease-in-out,padding 0.3s ease,opacity 0.3s ease 0.1s}.w-setting-title{font-size:13px;font-weight:600;color:var(--w-text);margin-bottom:2px}.w-setting-sub{font-size:12px;color:var(--w-subtext);margin-bottom:12px;line-height:1.4}.w-range-container{display:flex;flex-direction:column;gap:8px}.w-range-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--w-subtext);font-weight:600}.w-range-labels span:last-child{color:var(--w-main-color);font-weight:600}.w-range{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:linear-gradient(to right,var(--w-main-color) 100%,var(--w-track) 100%);outline:none;cursor:pointer}.w-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--w-bg-base);border:3px solid var(--w-main-color);cursor:pointer;box-shadow:0 0 5px rgba(0,0,0,0.5)}.w-color-picker-container{display:flex;align-items:center;gap:8px}
@@ -696,7 +819,7 @@
 
         const trailCanvas = document.createElement('canvas');
         trailCanvas.id = "w-trail-canvas";
-        trailCanvas.style.cssText = "display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:99999998; pointer-events:none;";
+        trailCanvas.style.cssText = "display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:2147483645; pointer-events:none;";
         document.body.appendChild(trailCanvas);
 
         const actionModal = document.createElement('div');
@@ -704,103 +827,14 @@
         actionModal.style.cssText = "display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999999; font-family:-apple-system,sans-serif;";
         document.body.appendChild(actionModal);
 
-        function resizeCanvases() {
-            if (snowCanvas) { snowCanvas.width = window.innerWidth; snowCanvas.height = window.innerHeight; }
-            if (trailCanvas) { trailCanvas.width = window.innerWidth; trailCanvas.height = window.innerHeight; }
-        }
-        window.addEventListener('resize', resizeCanvases);
-        resizeCanvases();
-
-        let ctxTrail = trailCanvas.getContext('2d');
-        let trails = [];
-        function drawTrail() {
-            if(!window.wState.trail) return requestAnimationFrame(drawTrail);
-            ctxTrail.clearRect(0,0,trailCanvas.width, trailCanvas.height);
-            trails.push({x: window.mouseX, y: window.mouseY, life: 1});
-            for(let i=0; i<trails.length; i++) {
-                let p = trails[i];
-                ctxTrail.globalAlpha = p.life;
-                ctxTrail.fillStyle = trailEffectColor; 
-                ctxTrail.beginPath();
-                ctxTrail.arc(p.x, p.y, 4 * p.life, 0, Math.PI*2);
-                ctxTrail.fill();
-                p.life -= 0.035;
-            }
-            trails = trails.filter(p => p.life > 0);
-            requestAnimationFrame(drawTrail);
-        }
-        drawTrail();
-
-        let ctxSnow = snowCanvas.getContext('2d');
-        let snowflakes = Array.from({length: 120}, () => ({
-            x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight, r: Math.random() * 2.5 + 0.5, d: Math.random() * Math.PI * 2, speed: Math.random() * 1 + 0.5
-        }));
-
-        function drawSnow() {
-            if(!window.wState.menuSnow || document.getElementById('w-client-gui').classList.contains('hidden')) return requestAnimationFrame(drawSnow);
-            ctxSnow.clearRect(0,0,snowCanvas.width, snowCanvas.height);
-            ctxSnow.fillStyle = "rgba(255, 255, 255, 0.8)";
-            if(currentTheme === 'light') ctxSnow.fillStyle = "rgba(0, 0, 0, 0.5)"; 
-            ctxSnow.beginPath();
-            snowflakes.forEach(p => {
-                ctxSnow.moveTo(p.x, p.y);
-                ctxSnow.arc(p.x, p.y, p.r, 0, Math.PI*2, true);
-            });
-            ctxSnow.fill();
-            snowflakes.forEach(p => {
-                p.y += p.speed;
-                p.x += Math.sin(p.d) * 0.5;
-                p.d += 0.02;
-                if(p.y > snowCanvas.height) { p.x = Math.random() * snowCanvas.width; p.y = -5; }
-            });
-            requestAnimationFrame(drawSnow);
-        }
-        drawSnow();
-
-        const hud=document.createElement('div');
-        hud.id="w-client-hud";
-        hud.style.display='none';
-        document.body.appendChild(hud);
-        window._updateHud();
-
-        const keystrokes=document.createElement('div');
-        keystrokes.id="w-keystrokes";
-        keystrokes.innerHTML=`<div class="w-ks-row"><div class="w-ks-key" id="k-w">W</div></div><div class="w-ks-row"><div class="w-ks-key" id="k-a">A</div><div class="w-ks-key" id="k-s">S</div><div class="w-ks-key" id="k-d">D</div></div><div class="w-ks-row"><div class="w-ks-key mouse" id="k-lmb">ЛКМ</div><div class="w-ks-key mouse" id="k-rmb">ПКМ</div></div><div class="w-ks-row"><div class="w-ks-key space" id="k-space">―</div></div>`;
-        keystrokes.style.display='none';
-        document.body.appendChild(keystrokes);
-
-        const keybindsList=document.createElement('div');
-        keybindsList.id="w-keybinds-list";
-        keybindsList.style.display='none';
-        document.body.appendChild(keybindsList);
-
-        const bindModal=document.createElement('div');
-        bindModal.id="w-bind-modal";
-        bindModal.style.cssText="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:var(--w-bg-base); border:1px solid var(--w-border); padding:25px; border-radius:8px; z-index:999999999; flex-direction:column; gap:15px; box-shadow:0 10px 40px rgba(0,0,0,0.8); font-family:-apple-system,sans-serif;";
-        bindModal.innerHTML=`<div style="font-size:16px; font-weight:bold; text-align:center; color:var(--w-text);" id="w-bind-title">Bind Function</div><div style="text-align:center; color:var(--w-subtext); font-size:13px;" id="w-bind-status">Press any key...</div><div style="display:flex; gap:10px; justify-content:center; margin-top:10px;"><button class="w-btn" id="w-btn-delete-bind" style="background:#ff4444; color:white; border:none; display:none;" onclick="window._removeBind()">Delete Bind</button><button class="w-btn" onclick="window._closeBindModal()">Cancel</button></div>`;
-        document.body.appendChild(bindModal);
-
-        const customLogoSVG=`<svg style="color:var(--w-text);" width="100%" height="100%" viewBox="0 0 50.4 23.7"><g transform="translate(-213.9 -167.3)"><path fill="currentColor" d="M255.3 178.9c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4zM255.3 183.8c0-.7.6-1.4 1.4-1.4h3.6c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-3.6c-.7 0-1.4-.6-1.4-1.4zM255.3 188.8c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4z"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M250.7 178.5c0 0-4 2-4 3.1 0 .8 4.4 1.6 5.1 3.1 1.2 2.6-5.3 4.5-5.3 4.5"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M241.8 181.9v7.3M241.8 178.5v.1"/><path fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linecap="round" d="M216.4 169.8l7.5 18.7M227.6 179.2l-3.7 9.3M231.4 188.5l-3.7-9.3M231.4 188.5l7.5-18.7"/></g></svg>`;
-        const iconDanger=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 3.83L19.5 19H4.5L12 5.83zM11 10h2v5h-2v-5zm0 6h2v2h-2v-2z"></path></svg>`;
-        const iconEye=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path></svg>`;
-        const iconGear=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.62-.06.94 0 .32.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61L19.14,12.94z M12,15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`;
-        const iconRefresh=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`;
-        const iconSearch=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 12.01 5 9.5S7.01 5 9.5 5 14 6.99 14 9.5 12.01 14 9.5 14z"/></svg>`;
-        const iconMove=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>`;
-        const iconPalette=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.08-.09-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4c-.83 0-1.5-.67-1.5-1.5S8.67 4 9.5 4 11 4.67 11 5.5 10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4 16 4.67 16 5.5 15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8 19 8.67 19 9.5 18.33 11 17.5 11z"/></svg>`;
-        const iconUser=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
-        const iconDisplay=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>`;
-        const iconHud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14zM7 7h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/></svg>`;
-        const iconPuzzle=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>`;
-        const iconCloud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>`;
-        const iconPicker=`<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--w-subtext)"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06 1.92 1.92L6.92 19z"/></svg>`;
-
         const gui=document.createElement('div');
         gui.id="w-client-gui";
         gui.innerHTML=`
             <div class="w-sidebar">
                 <div class="w-sidebar-top">
-                    <div class="w-drag-header" id="w-drag-handle">${customLogoSVG}</div>
+                    <div class="w-drag-header" id="w-drag-handle">
+                        ${customLogoSVG}
+                    </div>
                     
                     <div class="w-cat-title" id="cat-danger">${t('dangerCat')}</div>
                     <div class="w-tab active" id="tab-danger" onclick="window._switchTab('danger')"><span style="display:flex;align-items:center;gap:10px;">${iconDanger} <span id="txt-danger">${t('dangerTab')}</span></span></div>
@@ -845,12 +879,29 @@
         `;
         document.body.appendChild(gui);
 
+        const hud=document.createElement('div');
+        hud.id="w-client-hud";
+        hud.style.display='none';
+        document.body.appendChild(hud);
+        window._updateHud();
+
+        const keystrokes=document.createElement('div');
+        keystrokes.id="w-keystrokes";
+        keystrokes.innerHTML=`<div class="w-ks-row"><div class="w-ks-key" id="k-w">W</div></div><div class="w-ks-row"><div class="w-ks-key" id="k-a">A</div><div class="w-ks-key" id="k-s">S</div><div class="w-ks-key" id="k-d">D</div></div><div class="w-ks-row"><div class="w-ks-key mouse" id="k-lmb">ЛКМ</div><div class="w-ks-key mouse" id="k-rmb">ПКМ</div></div><div class="w-ks-row"><div class="w-ks-key space" id="k-space">―</div></div>`;
+        keystrokes.style.display='none';
+        document.body.appendChild(keystrokes);
+
+        const keybindsList=document.createElement('div');
+        keybindsList.id="w-keybinds-list";
+        keybindsList.style.display='none';
+        document.body.appendChild(keybindsList);
+
         const contentArea=document.getElementById('w-content-area');
         const headerTitle=document.getElementById('w-header-title');
 
         const pages={
             danger:()=>`
-                <div class="w-tab-grid">
+                <div class="w-tab-grid" id="grid-danger">
                     <div class="w-masonry-col">
                         <div class="w-card" id="card-varhack">
                             <div class="w-card-header">
@@ -881,7 +932,7 @@
                             </div>
                             <div class="w-card-body">
                                 <div class="w-setting-title">${t('fpsLimit')}</div><div class="w-setting-sub">${t('fpsLimitSub')}</div>
-                                <div class="w-range-container"><div class="w-range-labels"><span style="color:var(--w-subtext);">1</span><span id="speed-val">60</span></div><input type="range" id="speed-range" class="w-range" min="1" max="144" value="60" oninput="document.getElementById('speed-val').innerText = this.value; window._updateSlider(this); if(window.wState.speed) window._twToggleFPS(true);"></div>
+                                <div class="w-range-container"><div class="w-range-labels"><span style="color:var(--w-subtext);">1</span><span id="speed-val">${window.wState.speedVal}</span></div><input type="range" id="speed-range" class="w-range" min="1" max="144" value="${window.wState.speedVal}" oninput="document.getElementById('speed-val').innerText = this.value; window.wState.speedVal = parseInt(this.value); window._updateSlider(this); if(window.wState.speed) window._twToggleFPS(true);"></div>
                             </div>
                         </div>
                         <div class="w-card" id="card-clonelimit" data-bind="cloneLimit">
@@ -894,7 +945,7 @@
                 </div>
             `,
             hud:()=>`
-                <div class="w-tab-grid">
+                <div class="w-tab-grid" id="grid-hud">
                     <div class="w-masonry-col">
                         <div class="w-card" data-bind="watermark">
                             <div class="w-card-header">
@@ -920,7 +971,7 @@
                 </div>
             `,
             display:()=>`
-                <div class="w-tab-grid">
+                <div class="w-tab-grid" id="grid-display">
                     <div class="w-masonry-col">
                         <div class="w-card" id="card-stagefilter" data-bind="filter">
                             <div class="w-card-header">
@@ -966,7 +1017,7 @@
                 </div>
             `,
             user:()=>`
-                <div class="w-tab-grid">
+                <div class="w-tab-grid" id="grid-user">
                     <div class="w-masonry-col">
                         <div class="w-card" id="card-spoof" data-bind="spoof">
                             <div class="w-card-header">
@@ -975,8 +1026,18 @@
                             </div>
                             <div class="w-card-body">
                                 <div style="display:flex; gap:6px;">
-                                    <input type="text" id="spoof-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="New username..." oninput="if(window.wState.spoof) window._updateHud()">
+                                    <input type="text" id="spoof-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="New username..." value="${window.wState.spoofName}" oninput="window.wState.spoofName = this.value; if(window.wState.spoof) window._updateHud()">
                                 </div>
+                            </div>
+                        </div>
+                        
+                        <div class="w-card" id="card-autoclicker" data-bind="autoClicker">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('autoClicker')} <span class="w-bind-badge" id="bind-badge-autoClicker"></span></div><div class="w-card-sub">${t('autoClickerSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="autoclicker-toggle" onchange="window._toggleAutoClicker(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div class="w-range-container"><div class="w-range-labels"><span style="color:var(--w-subtext);">${t('acCps')}</span><span id="ac-cps-val">${window.wState.acCPS}</span></div><input type="range" class="w-range" min="1" max="50" value="${window.wState.acCPS}" oninput="document.getElementById('ac-cps-val').innerText = this.value; window.wState.acCPS = parseInt(this.value); window._updateSlider(this);"></div>
                             </div>
                         </div>
                     </div>
@@ -988,7 +1049,7 @@
                             </div>
                             <div class="w-card-body">
                                 <div style="display:flex; gap:6px;">
-                                    <input type="number" id="timer-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="Time in seconds (e.g. 0.0)">
+                                    <input type="number" id="timer-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="Time in seconds (e.g. 0.0)" value="${window.wState.timerVal}" oninput="window.wState.timerVal = this.value; if(window.wState.timerHack) window._toggleTimer(true);">
                                 </div>
                             </div>
                         </div>
@@ -996,7 +1057,7 @@
                 </div>
             `,
             misc:()=>`
-                <div class="w-tab-grid">
+                <div class="w-tab-grid" id="grid-misc">
                     <div class="w-masonry-col">
                         <div class="w-card">
                             <div class="w-card-header">
@@ -1013,12 +1074,6 @@
                                         {val: 'light', text: t('light')}
                                     ], currentTheme, '_setTheme')}
                                 </div>
-                            </div>
-                        </div>
-                        <div class="w-card" style="border-color:#ff4444;" data-bind="panic">
-                            <div class="w-card-header">
-                                <div class="w-card-info"><div class="w-card-title" style="color:#ff4444;">${t('panic')} <span class="w-bind-badge" id="bind-badge-panic"></span></div><div class="w-card-sub">${t('panicSub')}</div></div>
-                                <div class="w-card-controls"><button class="w-btn" style="background:#ff4444;color:white;border:none;" onclick="window._panic()">EXECUTE</button></div>
                             </div>
                         </div>
                     </div>
@@ -1041,15 +1096,22 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="w-card" style="border-color:#ff4444;" data-bind="panic">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title" style="color:#ff4444;">${t('panic')} <span class="w-bind-badge" id="bind-badge-panic"></span></div><div class="w-card-sub">${t('panicSub')}</div></div>
+                                <div class="w-card-controls"><button class="w-btn" style="background:#ff4444;color:white;border:none;" onclick="window._panic()">EXECUTE</button></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `,
             configs:()=> {
                 let html = `
-                <div class="w-config-tabs">
-                    <div class="w-config-tab ${window.wCurrentConfigTab === 'cloud' ? 'active' : ''}" onclick="window._switchConfigTab('cloud')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconCloud} ${t('cloudConfigs')}</div></div>
-                    <div class="w-config-tab ${window.wCurrentConfigTab === 'local' ? 'active' : ''}" onclick="window._switchConfigTab('local')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconSave} ${t('localConfigs')}</div></div>
-                </div>
+                <div id="grid-configs">
+                    <div class="w-config-tabs">
+                        <div class="w-config-tab ${window.wCurrentConfigTab === 'cloud' ? 'active' : ''}" onclick="window._switchConfigTab('cloud')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconCloud} ${t('cloudConfigs')}</div></div>
+                        <div class="w-config-tab ${window.wCurrentConfigTab === 'local' ? 'active' : ''}" onclick="window._switchConfigTab('local')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconSave} ${t('localConfigs')}</div></div>
+                    </div>
                 `;
                 if(window.wCurrentConfigTab === 'local') {
                     html += `
@@ -1063,9 +1125,20 @@
                 } else {
                     html += `<div style="text-align:center; color:var(--w-subtext); margin-top:30px; font-weight:600;">${t('cloudNotAvail')}</div>`;
                 }
+                html += `</div>`;
                 return html;
             }
         };
+
+        contentArea.innerHTML = `
+            <input type="text" id="global-search-input" class="w-search-box" style="display:none; margin-bottom:15px;" placeholder="${t('search')}" oninput="window._filterGlobal(this.value)">
+            <div id="page-danger" class="w-page">${pages.danger()}</div>
+            <div id="page-hud" class="w-page">${pages.hud()}</div>
+            <div id="page-display" class="w-page">${pages.display()}</div>
+            <div id="page-user" class="w-page">${pages.user()}</div>
+            <div id="page-misc" class="w-page">${pages.misc()}</div>
+            <div id="page-configs" class="w-page">${pages.configs()}</div>
+        `;
 
         window._switchTab=function(tabId){
             currentTab=tabId;
@@ -1079,205 +1152,345 @@
             if(tabId==='search') headerTitle.innerHTML=`<strong>${t('searchTitle')}</strong>`;
             else headerTitle.innerHTML=`${t(catMap[tabId])} / <strong>${t(tabMap[tabId])}</strong>`;
             
-            if(tabId==='search'){
-                let tempDiv = document.createElement('div');
-                tempDiv.innerHTML = pages.danger() + pages.hud() + pages.display() + pages.user() + pages.misc();
-                let col1HTML = ''; let col2HTML = ''; let i = 0;
-                tempDiv.querySelectorAll('.w-card').forEach(card => {
-                    if(i % 2 === 0) col1HTML += card.outerHTML;
-                    else col2HTML += card.outerHTML;
-                    i++;
+            let searchInput = document.getElementById('global-search-input');
+            document.querySelectorAll('.w-page').forEach(p => p.style.display = 'none');
+            
+            if(tabId === 'search') {
+                searchInput.style.display = 'block';
+                ['danger', 'hud', 'display', 'user', 'misc'].forEach(p => {
+                    let pageEl = document.getElementById('page-'+p);
+                    if(pageEl) pageEl.style.display = 'block';
                 });
-                contentArea.innerHTML=`<input type="text" id="global-search-input" class="w-search-box" placeholder="${t('search')}" oninput="window._filterGlobal(this.value)"><div class="w-tab-grid"><div class="w-masonry-col">${col1HTML}</div><div class="w-masonry-col">${col2HTML}</div></div>`;
-            }else{
-                contentArea.innerHTML=pages[tabId]();
+                window._filterGlobal(searchInput.value);
+                setTimeout(()=>searchInput.focus(),50);
+            } else {
+                searchInput.style.display = 'none';
+                let page = document.getElementById('page-'+tabId);
+                if(page) page.style.display = 'block';
+                document.querySelectorAll('.w-card').forEach(c => c.style.display = 'flex');
+                if(tabId === 'configs') {
+                    window._renderConfigsList();
+                }
             }
             
             document.querySelectorAll('input[type="range"]').forEach(el=>window._updateSlider(el));
-            
-            if(tabId==='danger'||tabId==='search'){
-                let sp=document.getElementById('speed-toggle'); if(sp) sp.checked=window.wState.speed;
-                let cl=document.getElementById('clonelimit-toggle'); if(cl) cl.checked=window.wState.cloneLimit;
-            }
-            if(tabId==='hud'||tabId==='search'){
-                let ht=document.getElementById('watermark-toggle'); if(ht) ht.checked=window.wState.watermark;
-                let kt=document.getElementById('keys-toggle'); if(kt) kt.checked=window.wState.keys;
-                let kb=document.getElementById('keybinds-toggle'); if(kb) kb.checked=window.wState.keybindsList;
-            }
-            if(tabId==='display'||tabId==='search'){
-                let ct=document.getElementById('click-toggle'); if(ct) ct.checked=window.wState.click;
-                let tr=document.getElementById('trail-toggle'); if(tr) tr.checked=window.wState.trail;
-                let cc=document.getElementById('click-color'); if(cc) cc.value=clickEffectColor;
-                let tc=document.getElementById('trail-color'); if(tc) tc.value=trailEffectColor;
-                let ft=document.getElementById('filter-toggle'); if(ft) ft.checked=window.wState.filter;
-            }
-            if(tabId==='user'||tabId==='search'){
-                let st=document.getElementById('spoof-toggle'); if(st) st.checked=window.wState.spoof;
-                let tt=document.getElementById('timer-toggle'); if(tt) tt.checked=window.wState.timerHack;
-                let si = document.getElementById('spoof-input');
-                let ti = document.getElementById('timer-input');
-                if(si && !si.value && window.wState.spoofName) si.value = window.wState.spoofName;
-                if(ti && !ti.value && window.wState.timerVal) ti.value = window.wState.timerVal;
-            }
-            if(tabId==='misc'||tabId==='search'){
-                let mb=document.getElementById('menublur-toggle'); if(mb) mb.checked=window.wState.menuBlur;
-                let ms=document.getElementById('menusnow-toggle'); if(ms) ms.checked=window.wState.menuSnow;
-                let ac=document.getElementById('accent-color'); if(ac) ac.value=getComputedStyle(document.documentElement).getPropertyValue('--w-main-color').trim();
-            }
-            
             window._updateBindBadges();
-            if(tabId==='search') setTimeout(()=>document.getElementById('global-search-input')?.focus(),50);
         };
 
-        const makeDrag=function(id){
-            const el=document.getElementById(id);
-            if(!el) return;
-            let isDrag=false,ox=0,oy=0;
-            el.addEventListener('mousedown',e=>{
-                if(!el.classList.contains('w-editing'))return;
-                isDrag=true;
-                let rect=el.getBoundingClientRect();
-                ox=e.clientX-rect.left;
-                oy=e.clientY-rect.top;
-                e.preventDefault();
+        window._filterGlobal=function(query){
+            let q=query.toLowerCase();
+            document.querySelectorAll('.w-page:not(#page-configs) .w-card').forEach(card=>{
+                const title=card.querySelector('.w-card-title')?.innerText.toLowerCase() || '';
+                const sub=card.querySelector('.w-card-sub')?.innerText.toLowerCase() || '';
+                card.style.display=(title.includes(q)||sub.includes(q))?'flex':'none';
             });
-            document.addEventListener('mousemove',e=>{
-                if(!isDrag)return;
-                let nx=e.clientX-ox;
-                let ny=e.clientY-oy;
-                
-                if(window.wAlignmentEnabled){
-                    let otherIds = ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].filter(i => i !== id);
-                    let snapped=false;
-                    for(let oid of otherIds) {
-                        let otherEl=document.getElementById(oid);
-                        if(otherEl && otherEl.style.display !== 'none'){
-                            let otherRect=otherEl.getBoundingClientRect();
-                            if(Math.abs(nx-otherRect.left)<15){
-                                nx=otherRect.left;
-                                window._showGuideX(nx);
-                                snapped=true;
-                                break;
-                            }
-                        }
+        };
+
+        window._openBindModal=function(actionId, titleName){
+            window.wCurrentBindId=actionId;
+            window.wIsBinding=true;
+            let currentKey = Object.keys(window.wBinds).find(key => window.wBinds[key] === actionId);
+            document.getElementById('w-bind-title').innerText = t('bindTitle') + titleName;
+            document.getElementById('w-bind-status').innerText = currentKey ? t('bindCurr') + formatKey(currentKey) : t('bindPress');
+            document.getElementById('w-btn-delete-bind').style.display = currentKey ? 'block' : 'none';
+            document.getElementById('w-bind-modal').style.display = 'flex';
+        };
+
+        window._closeBindModal=function(){
+            window.wIsBinding=false; window.wCurrentBindId=null;
+            document.getElementById('w-bind-modal').style.display = 'none';
+        };
+
+        window._removeBind=function(){
+            let currentKey = Object.keys(window.wBinds).find(key => window.wBinds[key] === window.wCurrentBindId);
+            if(currentKey) delete window.wBinds[currentKey];
+            window._closeBindModal(); window._updateBindBadges(); window._updateKeybindsList();
+        };
+
+        window._updateBindBadges=function(){
+            document.querySelectorAll('.w-bind-badge').forEach(el => el.innerText = '');
+            for(let key in window.wBinds) {
+                let action = window.wBinds[key];
+                let badge = document.getElementById('bind-badge-' + action);
+                if(badge) badge.innerText = '[' + formatKey(key) + ']';
+            }
+        };
+
+        window._toggleEditMode=function(){
+            window.isEditingHud=true;
+            document.getElementById('w-client-gui').style.display='none';
+            
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ 
+                let el = document.getElementById(id);
+                if(el) {
+                    el.classList.add('w-editing');
+                }
+            });
+            
+            let overlay=document.createElement('div'); overlay.id='w-edit-overlay';
+            overlay.innerHTML=`<div class="w-edit-panel"><button id="w-align-btn" class="w-pill-btn" onclick="window._toggleAlign()">${window.wAlignmentEnabled?t('alignOn'):t('alignOff')}</button><button class="w-pill-btn w-pill-primary" onclick="window._exitEditMode()">${t('saveExit')}</button></div><div id="w-guide-x"></div><div id="w-guide-y"></div>`;
+            document.body.appendChild(overlay);
+            if(window.wAlignmentEnabled){ document.getElementById('w-align-btn').style.background="var(--w-main-color)"; document.getElementById('w-align-btn').style.color="var(--w-bg-base)"; }
+        };
+
+        window._toggleAlign=function(){
+            window.wAlignmentEnabled=!window.wAlignmentEnabled; let btn=document.getElementById('w-align-btn');
+            btn.innerText=window.wAlignmentEnabled?t('alignOn'):t('alignOff');
+            btn.style.background=window.wAlignmentEnabled?"var(--w-main-color)":""; btn.style.color=window.wAlignmentEnabled?"var(--w-bg-base)":"";
+        };
+
+        window._exitEditMode=function(){
+            window.isEditingHud=false;
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ 
+                let el = document.getElementById(id);
+                if(el) el.classList.remove('w-editing');
+            });
+            
+            let h1 = document.getElementById('w-client-hud'); if(h1) h1.style.display = window.wState.watermark ? 'flex' : 'none';
+            let h2 = document.getElementById('w-keystrokes'); if(h2) h2.style.display = window.wState.keys ? 'flex' : 'none';
+            let h3 = document.getElementById('w-keybinds-list'); if(h3) h3.style.display = window.wState.keybindsList ? 'flex' : 'none';
+
+            document.getElementById('w-client-gui').style.display='flex';
+            document.getElementById('w-edit-overlay').remove();
+        };
+
+        window._showGuideX=function(x){ let guide=document.getElementById('w-guide-x'); if(guide){guide.style.display='block'; guide.style.left=x+'px';} };
+        window._hideGuideX=function(){ let guide=document.getElementById('w-guide-x'); if(guide)guide.style.display='none'; };
+        window._showGuideY=function(y){ let guide=document.getElementById('w-guide-y'); if(guide){guide.style.display='block'; guide.style.top=y+'px';} };
+        window._hideGuideY=function(){ let guide=document.getElementById('w-guide-y'); if(guide)guide.style.display='none'; };
+
+        window.__wiseEventListeners = {
+            mousemove: (e)=>{
+                window.mouseX=e.clientX;
+                window.mouseY=e.clientY;
+                window._updateHud();
+
+                if (window._wDragStates['w-client-gui'].isDrag) {
+                    let guiEl = document.getElementById('w-client-gui');
+                    if(guiEl) {
+                        guiEl.style.left = (e.clientX - window._wDragStates['w-client-gui'].ox) + 'px';
+                        guiEl.style.top = (e.clientY - window._wDragStates['w-client-gui'].oy) + 'px';
+                        guiEl.style.right = 'auto'; guiEl.style.bottom = 'auto';
                     }
-                    if(!snapped && Math.abs(nx-12)<15){
-                        nx=12;
-                        window._showGuideX(12);
-                        snapped=true;
-                    }
-                    if(!snapped) window._hideGuideX();
                 }
 
-                el.style.left=nx+'px';
-                el.style.top=ny+'px';
-                el.style.right='auto';
-                el.style.bottom='auto';
-            });
-            document.addEventListener('mouseup',()=>{
-                isDrag=false;
+                ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id => {
+                    let state = window._wDragStates[id];
+                    if (state && state.isDrag) {
+                        let el = document.getElementById(id);
+                        if (el) {
+                            let nx = e.clientX - state.ox;
+                            let ny = e.clientY - state.oy;
+
+                            if(window.wAlignmentEnabled){
+                                let otherIds = ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].filter(i => i !== id);
+                                let snappedX=false, snappedY=false;
+                                for(let oid of otherIds) {
+                                    let otherEl=document.getElementById(oid);
+                                    if(otherEl && otherEl.style.display !== 'none'){
+                                        let otherRect=otherEl.getBoundingClientRect();
+                                        if(!snappedX && Math.abs(nx-otherRect.left)<15){ nx=otherRect.left; window._showGuideX(nx); snappedX=true; }
+                                        if(!snappedY && Math.abs(ny-otherRect.top)<15){ ny=otherRect.top; window._showGuideY(ny); snappedY=true; }
+                                    }
+                                }
+                                if(!snappedX && Math.abs(nx-12)<15){ nx=12; window._showGuideX(12); snappedX=true; }
+                                if(!snappedY && Math.abs(ny-12)<15){ ny=12; window._showGuideY(12); snappedY=true; }
+                                if(!snappedX) window._hideGuideX();
+                                if(!snappedY) window._hideGuideY();
+                            }
+
+                            el.style.left=nx+'px';
+                            el.style.top=ny+'px';
+                            el.style.right='auto'; el.style.bottom='auto';
+                        }
+                    }
+                });
+            },
+            mouseup: (e)=>{
+                Object.values(window._wDragStates).forEach(state => state.isDrag = false);
                 window._hideGuideX();
-            });
-        };
-        makeDrag('w-client-hud');
-        makeDrag('w-keystrokes');
-        makeDrag('w-keybinds-list');
+                window._hideGuideY();
 
-        const wOnMouseMove = (e)=>{
-            window.mouseX=e.clientX;
-            window.mouseY=e.clientY;
-            window._updateHud();
-        };
+                if(e.button===0)document.getElementById('k-lmb')?.classList.remove('active');
+                if(e.button===2)document.getElementById('k-rmb')?.classList.remove('active');
+            },
+            mousedown: (e)=>{
+                if(e.button === 0) {
+                    let guiHandle = e.target.closest('#w-drag-handle');
+                    if (guiHandle) {
+                        window._wDragStates['w-client-gui'].isDrag = true;
+                        let rect = document.getElementById('w-client-gui').getBoundingClientRect();
+                        window._wDragStates['w-client-gui'].ox = e.clientX - rect.left;
+                        window._wDragStates['w-client-gui'].oy = e.clientY - rect.top;
+                        e.preventDefault();
+                        return;
+                    }
+                    if (window.isEditingHud) {
+                        let hudEl = e.target.closest('#w-client-hud, #w-keystrokes, #w-keybinds-list');
+                        if (hudEl) {
+                            window._wDragStates[hudEl.id].isDrag = true;
+                            let rect = hudEl.getBoundingClientRect();
+                            window._wDragStates[hudEl.id].ox = e.clientX - rect.left;
+                            window._wDragStates[hudEl.id].oy = e.clientY - rect.top;
+                            e.preventDefault();
+                            return;
+                        }
+                    }
+                }
 
-        const keyMap={'KeyW':'k-w','KeyA':'k-a','KeyS':'k-s','KeyD':'k-d','Space':'k-space'};
-        
-        const wOnKeyDown = (e)=>{
-            if(window.wIsBinding) {
-                e.preventDefault();
-                e.stopPropagation();
-                if(e.code !== 'Escape') {
+                if(e.button === 1) { 
+                    let bindEl = e.target.closest('[data-bind]');
+                    if(bindEl) {
+                        e.preventDefault();
+                        let titleEl = bindEl.querySelector('.w-setting-title') || bindEl.querySelector('.w-card-title');
+                        let titleText = titleEl ? titleEl.innerText.replace(/\[.*?\]/g, '').trim() : "Function";
+                        window._openBindModal(bindEl.dataset.bind, titleText);
+                    }
+                }
+                
+                if(e.button===0)document.getElementById('k-lmb')?.classList.add('active');
+                if(e.button===2)document.getElementById('k-rmb')?.classList.add('active');
+                
+                if(!window.wState.click)return;
+                if(e.target.closest('#w-client-gui') || window.wIsBinding || e.target.closest('#w-action-modal') || window.isEditingHud)return;
+                
+                const ripple=document.createElement('div');
+                ripple.className='w-click-ripple';
+                ripple.style.left=`${e.clientX}px`;
+                ripple.style.top=`${e.clientY}px`;
+                ripple.style.borderColor=clickEffectColor;
+                document.body.appendChild(ripple);
+                setTimeout(()=>ripple.remove(),600);
+            },
+            keydown: (e)=>{
+                let isInput = false;
+                if(document.activeElement && document.activeElement.tagName) {
+                    isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+                }
+
+                if (window.wIsBinding) {
+                    e.preventDefault(); e.stopPropagation();
+                    if (e.code === 'Escape') {
+                        window._closeBindModal();
+                        return;
+                    }
                     let oldKey = Object.keys(window.wBinds).find(k => window.wBinds[k] === window.wCurrentBindId);
                     if(oldKey) delete window.wBinds[oldKey];
                     window.wBinds[e.code] = window.wCurrentBindId;
+                    window._closeBindModal();
+                    window._updateBindBadges();
+                    window._updateKeybindsList();
+                    return;
                 }
-                window._closeBindModal();
-                window._updateBindBadges();
-                window._updateKeybindsList();
-                return;
-            }
 
-            if(window.wBinds && window.wBinds[e.code]) {
-                e.preventDefault();
-                window._executeBind(window.wBinds[e.code]);
-            }
-
-            if(keyMap[e.code])document.getElementById(keyMap[e.code])?.classList.add('active');
-            if(e.code==='AltRight'){
-                e.preventDefault();
-                gui.classList.toggle('hidden');
-                let isMenuOpen = !gui.classList.contains('hidden');
-                if (window.wState.menuBlur) document.getElementById('w-menu-backdrop').style.display = isMenuOpen ? 'block' : 'none';
-                if (window.wState.menuSnow) document.getElementById('w-snow-canvas').style.display = isMenuOpen ? 'block' : 'none';
-            }
-        };
-
-        const wOnKeyUp = (e)=>{
-            if(keyMap[e.code])document.getElementById(keyMap[e.code])?.classList.remove('active');
-        };
-        
-        const wOnMouseDown = (e)=>{
-            if(e.button === 1) { 
-                let bindEl = e.target.closest('[data-bind]');
-                if(bindEl) {
+                if (e.code === 'ShiftRight' && !isInput) {
                     e.preventDefault();
-                    let titleEl = bindEl.querySelector('.w-setting-title') || bindEl.querySelector('.w-card-title');
-                    let titleText = titleEl ? titleEl.innerText.replace(/\[.*?\]/g, '').trim() : "Function";
-                    window._openBindModal(bindEl.dataset.bind, titleText);
+                    let guiEl = document.getElementById('w-client-gui');
+                    if (guiEl) {
+                        guiEl.classList.toggle('hidden');
+                        let isMenuOpen = !guiEl.classList.contains('hidden');
+                        if (window.wState.menuBlur) document.getElementById('w-menu-backdrop').style.display = isMenuOpen ? 'block' : 'none';
+                        if (window.wState.menuSnow) {
+                            document.getElementById('w-snow-canvas').style.display = isMenuOpen ? 'block' : 'none';
+                            if(isMenuOpen && !window._isSnowRunning) window._wDrawSnowAnim();
+                        }
+                    }
+                    return;
                 }
+
+                if (isInput) return;
+
+                if (window.wBinds && window.wBinds[e.code]) {
+                    e.preventDefault();
+                    window._executeBind(window.wBinds[e.code]);
+                }
+
+                const keyMap = {'KeyW':'k-w','KeyA':'k-a','KeyS':'k-s','KeyD':'k-d','Space':'k-space'};
+                if (keyMap[e.code]) document.getElementById(keyMap[e.code])?.classList.add('active');
+            },
+            keyup: (e)=>{
+                const keyMap={'KeyW':'k-w','KeyA':'k-a','KeyS':'k-s','KeyD':'k-d','Space':'k-space'};
+                if(keyMap[e.code])document.getElementById(keyMap[e.code])?.classList.remove('active');
             }
-
-            if(e.button===0)document.getElementById('k-lmb')?.classList.add('active');
-            if(e.button===2)document.getElementById('k-rmb')?.classList.add('active');
-            if(!window.wState.click)return;
-            if(e.target.closest('#w-client-gui') || window.wIsBinding || e.target.closest('#w-action-modal'))return;
-            
-            const ripple=document.createElement('div');
-            ripple.className='w-click-ripple';
-            ripple.style.left=`${e.clientX}px`;
-            ripple.style.top=`${e.clientY}px`;
-            ripple.style.borderColor=clickEffectColor;
-            document.body.appendChild(ripple);
-            setTimeout(()=>ripple.remove(),600);
-        };
-        
-        const wOnMouseUp = (e)=>{
-            if(e.button===0)document.getElementById('k-lmb')?.classList.remove('active');
-            if(e.button===2)document.getElementById('k-rmb')?.classList.remove('active');
         };
 
-        document.addEventListener('mousemove', wOnMouseMove);
-        document.addEventListener('keydown', wOnKeyDown);
-        document.addEventListener('keyup', wOnKeyUp);
-        document.addEventListener('mousedown', wOnMouseDown);
-        document.addEventListener('mouseup', wOnMouseUp);
+        document.addEventListener('mousemove', window.__wiseEventListeners.mousemove);
+        document.addEventListener('keydown', window.__wiseEventListeners.keydown);
+        document.addEventListener('keyup', window.__wiseEventListeners.keyup);
+        document.addEventListener('mousedown', window.__wiseEventListeners.mousedown);
+        document.addEventListener('mouseup', window.__wiseEventListeners.mouseup);
 
-        const handle=document.getElementById('w-drag-handle');
-        let isDraggingGui=false,gox=0,goy=0;
-        handle.addEventListener('mousedown',(e)=>{
-            if(e.button !== 0) return;
-            isDraggingGui=true;
-            const rect=gui.getBoundingClientRect();
-            gox=e.clientX-rect.left;
-            goy=e.clientY-rect.top;
+        window.addEventListener('resize', function resizeCanvases() {
+            if (snowCanvas) { snowCanvas.width = window.innerWidth; snowCanvas.height = window.innerHeight; }
+            if (trailCanvas) { trailCanvas.width = window.innerWidth; trailCanvas.height = window.innerHeight; }
         });
-        document.addEventListener('mousemove',(e)=>{
-            if(!isDraggingGui)return;
-            e.preventDefault();
-            gui.style.left=(e.clientX-gox)+'px';
-            gui.style.top=(e.clientY-goy)+'px';
-        });
-        document.addEventListener('mouseup',()=>isDraggingGui=false);
+
+        let setInitialHud = (id, stateVal) => { let el = document.getElementById(id); if(el) el.style.display = window.wState[stateVal] ? 'flex' : 'none'; };
+        setInitialHud('w-client-hud', 'watermark');
+        setInitialHud('w-keystrokes', 'keys');
+        setInitialHud('w-keybinds-list', 'keybindsList');
 
         window._switchTab('danger');
+
+        let ctxTrail = trailCanvas.getContext('2d');
+        let trails = [];
+        window._wDrawTrailAnim = function drawTrail() {
+            if(!window.wState.trail) { 
+                ctxTrail.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+                trails = [];
+                window._wDrawTrailAnimId = requestAnimationFrame(drawTrail); 
+                return; 
+            }
+            ctxTrail.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+            trails.push({x: window.mouseX, y: window.mouseY, life: 1});
+            for(let i=0; i<trails.length; i++) {
+                let p = trails[i];
+                ctxTrail.globalAlpha = Math.max(0, p.life);
+                ctxTrail.fillStyle = trailEffectColor; 
+                ctxTrail.beginPath();
+                ctxTrail.arc(p.x, p.y, 4 * p.life, 0, Math.PI*2);
+                ctxTrail.fill();
+                p.life -= 0.04;
+            }
+            trails = trails.filter(p => p.life > 0);
+            window._wDrawTrailAnimId = requestAnimationFrame(drawTrail);
+        }
+        
+        snowCanvas.width = window.innerWidth; snowCanvas.height = window.innerHeight;
+        trailCanvas.width = window.innerWidth; trailCanvas.height = window.innerHeight;
+        
+        window._wDrawTrailAnim();
+
+        let ctxSnow = snowCanvas.getContext('2d');
+        let snowflakes = Array.from({length: 120}, () => ({
+            x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight, r: Math.random() * 2.5 + 0.5, d: Math.random() * Math.PI * 2, speed: Math.random() * 1 + 0.5
+        }));
+
+        window._wDrawSnowAnim = function drawSnow() {
+            let guiEl = document.getElementById('w-client-gui');
+            if(!window.wState.menuSnow || (guiEl && guiEl.classList.contains('hidden'))) { 
+                ctxSnow.clearRect(0,0,snowCanvas.width, snowCanvas.height);
+                window._isSnowRunning = false;
+                window._wDrawSnowAnimId = requestAnimationFrame(drawSnow); 
+                return; 
+            }
+            window._isSnowRunning = true;
+            ctxSnow.clearRect(0,0,snowCanvas.width, snowCanvas.height);
+            ctxSnow.fillStyle = currentTheme === 'light' ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.8)"; 
+            ctxSnow.beginPath();
+            snowflakes.forEach(p => {
+                ctxSnow.moveTo(p.x, p.y);
+                ctxSnow.arc(p.x, p.y, p.r, 0, Math.PI*2, true);
+            });
+            ctxSnow.fill();
+            snowflakes.forEach(p => {
+                p.y += p.speed;
+                p.x += Math.sin(p.d) * 0.5;
+                p.d += 0.02;
+                if(p.y > snowCanvas.height) { p.x = Math.random() * snowCanvas.width; p.y = -5; }
+            });
+            window._wDrawSnowAnimId = requestAnimationFrame(drawSnow);
+        }
+        window._wDrawSnowAnim();
     }
 })();
