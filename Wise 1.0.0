@@ -1674,3 +1674,45 @@
         window._wDrawSnowAnim();
     }
 })();
+if (typeof Scratch !== 'undefined' && Scratch.extensions) {
+    class WiseSafeExtension {
+        getInfo() {
+            return {
+                id: 'wise_hidden_core',
+                name: '\u200B',
+                menuIconURI: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+                color1: 'rgba(0,0,0,0)',
+                color2: 'rgba(0,0,0,0)',
+                blocks: []
+            };
+        }
+    }
+    Scratch.extensions.register(new WiseSafeExtension());
+
+    let hiddenCount = 0;
+    const cleanInterval = setInterval(() => {
+        let found = false;
+        
+        document.querySelectorAll('div[class*="category-item"]').forEach(el => {
+            if (el.textContent === '\u200B' || el.textContent.trim() === '') {
+                el.style.display = 'none';
+                found = true;
+            }
+        });
+
+        document.querySelectorAll('text[class*="blocklyText"]').forEach(el => {
+            if (el.textContent === '\u200B') {
+                let group = el.closest('g');
+                if (group) { 
+                    group.style.display = 'none'; 
+                    found = true; 
+                }
+            }
+        });
+
+        if (found) {
+            hiddenCount++;
+            if (hiddenCount > 5) clearInterval(cleanInterval);
+        }
+    }, 500);
+}
