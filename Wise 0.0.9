@@ -1,0 +1,1283 @@
+(function(){
+    function findVM() {
+        if (window.vm) return window.vm;
+        const app = document.querySelector('#app');
+        if (!app) return null;
+        for (const key in app) {
+            if (key.startsWith('__reactInternalInstance$') || key.startsWith('__reactFiber$')) {
+                const fiber = app[key];
+                let node = fiber;
+                while (node) {
+                    if (node.stateNode && node.stateNode.props && node.stateNode.props.vm) return node.stateNode.props.vm;
+                    node = node.child;
+                }
+            }
+        }
+        return null;
+    }
+
+    let checkInterval = setInterval(() => {
+        let vm = findVM();
+        if(vm) {
+            window.vm = vm;
+            clearInterval(checkInterval);
+            initClient();
+        }
+    }, 500);
+
+    function initClient(){
+        if(document.getElementById('w-client-gui'))document.getElementById('w-client-gui').remove();
+        if(document.getElementById('w-client-hud'))document.getElementById('w-client-hud').remove();
+        if(document.getElementById('w-keybinds-list'))document.getElementById('w-keybinds-list').remove();
+        if(document.getElementById('w-keystrokes'))document.getElementById('w-keystrokes').remove();
+        if(document.getElementById('w-edit-overlay'))document.getElementById('w-edit-overlay').remove();
+        if(document.getElementById('w-bind-modal'))document.getElementById('w-bind-modal').remove();
+        if(document.getElementById('w-action-modal'))document.getElementById('w-action-modal').remove();
+        if(document.getElementById('w-menu-backdrop'))document.getElementById('w-menu-backdrop').remove();
+        if(document.getElementById('w-snow-canvas'))document.getElementById('w-snow-canvas').remove();
+        if(document.getElementById('w-trail-canvas'))document.getElementById('w-trail-canvas').remove();
+
+        window.mouseX=0; window.mouseY=0;
+        let clickEffectColor='#ffffff';
+        let clickEffectSize=60;
+        let clickEffectWidth=3;
+        let trailEffectColor='#ffffff'; 
+
+        let currentLang='ru';
+        let currentTheme='dark';
+        let currentTab='danger';
+        window.wCurrentConfigTab = 'local';
+        
+        window.wAlignmentEnabled=false;
+        window.wCurrentFilter='none';
+        window.wIsBinding=false;
+        window.wCurrentBindId=null;
+        window.wBinds = {};
+        window.wLockedVars = {};
+        
+        window.wState = {
+            speed: false, watermark: false, keys: false, click: false, 
+            filter: false, trail: false, menuBlur: false, menuSnow: false, 
+            spoof: false, timerHack: false, keybindsList: false, cloneLimit: false
+        };
+
+        const i18n={
+            ru:{
+                dangerCat:"EXPLOITS", visualsCat:"VISUALS", moreCat:"MORE", settingsCat:"SETTINGS",
+                dangerTab:"Exploits", hudTab:"HUD", displayTab:"Display", userTab:"User", miscTab:"Miscellaneous", configsTab:"Configs",
+                search:"Поиск функций...", searchTitle:"Search",
+                varHack:"Variable Hack", varHackSub:"Изменение проектных переменных",
+                varScanner:"Variable Scanner", varScannerSub:"Редактирование значений",
+                speedHack:"Speed Hack", speedHackSub:"Изменение скорости игры",
+                cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Снимает лимит в 300 клонов",
+                broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Перехват и запуск ивентов",
+                watermark:"Watermark", watermarkSub:"Отображать панель информации",
+                keys:"Keystrokes", keysSub:"Отображать нажатия клавиш",
+                keybindsList:"Keybinds", keybindsListSub:"Отображать активные бинды",
+                clickEff:"Click Effect", clickEffSub:"Визуализация клика",
+                trail:"Cursor Trail", trailSub:"След за курсором мыши",
+                stageFilter:"Stage Filter", stageFilterSub:"Цветовые фильтры сцены", filterType:"Тип",
+                spoof:"Username Spoofer", spoofSub:"Подмена локального никнейма",
+                timerHack:"Timer Hack", timerHackSub:"Заморозка встроенного таймера",
+                menuBlur:"Menu Blur", menuBlurSub:"Размытие фона при открытом меню",
+                menuSnow:"Menu Snow", menuSnowSub:"Падающий снег за менюшкой",
+                theme:"Theme", themeSub:"Оформление клиента", light:"Светлая", dark:"Темная",
+                language:"Language", languageSub:"Язык интерфейса",
+                panic:"Panic Button", panicSub:"Моментально удалить чит",
+                effColor:"Цвет эффекта", color:"Цвет:", clickSize:"Дистанция", clickWidth:"Ширина",
+                notFound:"Пусто", saveExit:"Сохранить", alignOn:"Коррекция: ВКЛ", alignOff:"Коррекция: ВЫКЛ",
+                bindTitle:"Бинд для: ", bindPress:"Нажмите клавишу...", bindCurr:"Бинд: ", bindDel:"Удалить бинд", bindCancel:"Отмена",
+                cloudConfigs:"Облачные", localConfigs:"Локальные", createConfig:"Создать конфиг", importConfig:"Импорт", cloudNotAvail:"Облачные конфиги пока недоступны", cfgName:"Имя конфига:",
+                copyTxt:"Скопировать код", close:"Закрыть", create:"Создать", impBtn:"Импортировать"
+            },
+            en:{
+                dangerCat:"EXPLOITS", visualsCat:"VISUALS", moreCat:"MORE", settingsCat:"SETTINGS",
+                dangerTab:"Exploits", hudTab:"HUD", displayTab:"Display", userTab:"User", miscTab:"Miscellaneous", configsTab:"Configs",
+                search:"Search everything...", searchTitle:"Search",
+                varHack:"Variable Hack", varHackSub:"Modify project variables",
+                varScanner:"Variable Scanner", varScannerSub:"Real-time value editing",
+                speedHack:"Speed Hack", speedHackSub:"Change game speed",
+                cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Removes the 300 clone limit",
+                broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Intercept and trigger events",
+                watermark:"Watermark", watermarkSub:"Display info panel",
+                keys:"Keystrokes", keysSub:"Display pressed keys",
+                keybindsList:"Keybinds", keybindsListSub:"Show active keybinds list",
+                clickEff:"Click Effect", clickEffSub:"Ripple effect on click",
+                trail:"Cursor Trail", trailSub:"Visual trail following the mouse",
+                stageFilter:"Stage Filter", stageFilterSub:"Stage color modifiers", filterType:"Type",
+                spoof:"Username Spoofer", spoofSub:"Change local username",
+                timerHack:"Timer Hack", timerHackSub:"Freeze internal project timer",
+                menuBlur:"Menu Blur", menuBlurSub:"Blur background when menu is open",
+                menuSnow:"Menu Snow", menuSnowSub:"Falling snow behind the menu",
+                theme:"Theme", themeSub:"Client appearance", light:"Light", dark:"Dark",
+                language:"Language", languageSub:"Interface language",
+                panic:"Panic Button", panicSub:"Instantly remove the cheat",
+                effColor:"Effect Color", color:"Color:", clickSize:"Distance", clickWidth:"Width",
+                notFound:"None found", saveExit:"Save", alignOn:"Alignment: ON", alignOff:"Alignment: OFF",
+                bindTitle:"Bind Function: ", bindPress:"Press any key...", bindCurr:"Bind: ", bindDel:"Delete Bind", bindCancel:"Cancel",
+                cloudConfigs:"Cloud", localConfigs:"Local", createConfig:"Create Config", importConfig:"Import", cloudNotAvail:"Cloud configs are not available yet", cfgName:"Config Name:",
+                copyTxt:"Copy to Clipboard", close:"Close", create:"Create", impBtn:"Import"
+            },
+            uk:{
+                dangerCat:"EXPLOITS", visualsCat:"VISUALS", moreCat:"MORE", settingsCat:"SETTINGS",
+                dangerTab:"Exploits", hudTab:"HUD", displayTab:"Display", userTab:"User", miscTab:"Miscellaneous", configsTab:"Configs",
+                search:"Пошук функцій...", searchTitle:"Search",
+                varHack:"Variable Hack", varHackSub:"Зміна змінних проекту",
+                varScanner:"Variable Scanner", varScannerSub:"Редагування значень",
+                speedHack:"Speed Hack", speedHackSub:"Зміна швидкості гри",
+                cloneLimit:"Clone Limit Bypass", cloneLimitSub:"Знімає ліміт у 300 клонів",
+                broadcastSpoof:"Broadcast Spoofer", broadcastSpoofSub:"Перехоплення і запуск івентів",
+                watermark:"Watermark", watermarkSub:"Відображати панель інформації",
+                keys:"Keystrokes", keysSub:"Відображати натискання клавіш",
+                keybindsList:"Keybinds", keybindsListSub:"Список активних біндів",
+                clickEff:"Click Effect", clickEffSub:"Візуалізація кліку",
+                trail:"Cursor Trail", trailSub:"Слід за курсором миші",
+                stageFilter:"Stage Filter", stageFilterSub:"Кольорові фільтри сцени", filterType:"Тип",
+                spoof:"Username Spoofer", spoofSub:"Підміна локального нікнейма",
+                timerHack:"Timer Hack", timerHackSub:"Заморозка вбудованого таймера",
+                menuBlur:"Menu Blur", menuBlurSub:"Розмиття фону при відкритому меню",
+                menuSnow:"Menu Snow", menuSnowSub:"Сніжинки за менюшкою",
+                theme:"Theme", themeSub:"Оформлення клієнта", light:"Світла", dark:"Темна",
+                language:"Language", languageSub:"Мова інтерфейсу",
+                panic:"Panic Button", panicSub:"Миттєво видалити чит",
+                effColor:"Колір ефекту", color:"Колір:", clickSize:"Дистанція", clickWidth:"Ширина",
+                notFound:"Пусто", saveExit:"Зберегти", alignOn:"Корекція: УВІМК", alignOff:"Корекція: ВИМК",
+                bindTitle:"Бінд для: ", bindPress:"Натисніть клавішу...", bindCurr:"Бінд: ", bindDel:"Видалити бинд", bindCancel:"Скасувати",
+                cloudConfigs:"Хмарні", localConfigs:"Локальні", createConfig:"Створити конфіг", importConfig:"Імпорт", cloudNotAvail:"Хмарні конфіги поки недоступні", cfgName:"Ім'я конфіга:",
+                copyTxt:"Скопіювати код", close:"Закрити", create:"Створити", impBtn:"Імпортувати"
+            }
+        };
+        const t=(key)=>i18n[currentLang][key] || i18n['ru'][key];
+
+        const actionToName = {
+            speed: 'speedHack', watermark: 'watermark', keys: 'keys', click: 'clickEff',
+            trail: 'trail', filter: 'stageFilter', spoof: 'spoof', timerHack: 'timerHack',
+            keybindsList: 'keybindsList', cloneLimit: 'cloneLimit'
+        };
+
+        function formatKey(code) {
+            if(code.startsWith('Key')) return code.slice(3);
+            if(code.startsWith('Digit')) return code.slice(5);
+            if(code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+            if(code === 'Space') return 'Space';
+            if(code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift';
+            if(code === 'ControlLeft' || code === 'ControlRight') return 'Ctrl';
+            return code;
+        }
+
+        let projectName=document.title.replace(' - TurboWarp','').replace(' - Scratch','').trim()||"Unknown Project";
+        let userName="Guest";
+        try{if(window.vm.runtime.ioDevices.userData&&typeof window.vm.runtime.ioDevices.userData.getUsername==='function'){userName=window.vm.runtime.ioDevices.userData.getUsername()||"Guest";}}catch(e){}
+
+        window._toggleDropdown = function(id, e) {
+            if(e) e.stopPropagation();
+            document.querySelectorAll('.w-select-items').forEach(el => {
+                if(el.id !== 'items-'+id) {
+                    el.style.display = 'none';
+                    if(el.closest('.w-custom-select-container')) el.closest('.w-custom-select-container').style.zIndex = '1';
+                    if(el.closest('.w-card')) el.closest('.w-card').style.zIndex = '';
+                }
+            });
+            let el = document.getElementById('items-'+id);
+            if(el) {
+                if(el.style.display === 'block') {
+                    el.style.display = 'none';
+                    el.closest('.w-custom-select-container').style.zIndex = '1';
+                    if(el.closest('.w-card')) el.closest('.w-card').style.zIndex = '';
+                } else {
+                    el.style.display = 'block';
+                    el.closest('.w-custom-select-container').style.zIndex = '999';
+                    if(el.closest('.w-card')) el.closest('.w-card').style.zIndex = '100'; 
+                }
+            }
+        };
+
+        window._selectOption = function(id, val, text, callbackStr) {
+            let selectedEl = document.getElementById('selected-'+id);
+            if(selectedEl) selectedEl.querySelector('span').innerText = text;
+            let itemsEl = document.getElementById('items-'+id);
+            if(itemsEl) {
+                itemsEl.style.display = 'none';
+                if(itemsEl.closest('.w-custom-select-container')) itemsEl.closest('.w-custom-select-container').style.zIndex = '1';
+                if(itemsEl.closest('.w-card')) itemsEl.closest('.w-card').style.zIndex = ''; 
+                itemsEl.querySelectorAll('div').forEach(d => d.classList.remove('active'));
+                let act = Array.from(itemsEl.querySelectorAll('div')).find(d => d.innerText === text);
+                if(act) act.classList.add('active');
+            }
+            eval(callbackStr);
+        };
+
+        document.addEventListener('click', function(e) {
+            if(!e.target.closest('.w-custom-select-container')) {
+                document.querySelectorAll('.w-select-items').forEach(el => {
+                    el.style.display = 'none';
+                    if(el.closest('.w-custom-select-container')) el.closest('.w-custom-select-container').style.zIndex = '1';
+                    if(el.closest('.w-card')) el.closest('.w-card').style.zIndex = '';
+                });
+            }
+            if(!e.target.closest('#btn-palette') && !e.target.closest('#w-accent-menu')) {
+                let am = document.getElementById('w-accent-menu');
+                if(am) am.style.display = 'none';
+            }
+        });
+
+        function makeSelect(id, options, currentVal, onChangeFunc) {
+            let currentText = options.find(o => o.val === currentVal)?.text || options[0].text;
+            let itemsHtml = options.map(o => `<div onclick="window._selectOption('${id}', '${o.val}', '${o.text}', \`window.${onChangeFunc}('${o.val}')\`)" class="${o.val === currentVal ? 'active' : ''}">${o.text}</div>`).join('');
+            return `<div class="w-custom-select-container"><div class="w-select-selected" id="selected-${id}" onclick="window._toggleDropdown('${id}', event)"><span>${currentText}</span><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></div><div class="w-select-items" id="items-${id}">${itemsHtml}</div></div>`;
+        }
+
+        window._updateKeybindsList = function() {
+            const el = document.getElementById('w-keybinds-list');
+            if(!el) return;
+            if(!window.wState.keybindsList) { el.style.display = 'none'; return; }
+            el.style.display = 'flex';
+            let html = `<div class="w-kb-title">${t('keybindsList')}</div>`;
+            let count = 0;
+            for(let key in window.wBinds) {
+                count++;
+                let action = window.wBinds[key];
+                let name = t(actionToName[action]) || action;
+                let isOn = window.wState[action];
+                let stateClass = isOn ? 'w-kb-on' : 'w-kb-off';
+                html += `<div class="w-kb-item"><span class="${stateClass}">${name}</span> <span class="w-kb-key">[${formatKey(key)}]</span></div>`;
+            }
+            if(count===0) html += `<div style="font-size:11px; color:var(--w-subtext); text-align:center;">${t('notFound')}</div>`;
+            el.innerHTML = html;
+        };
+
+        // --- BACKEND HOOKS ---
+        setInterval(() => {
+            if(!window.vm || !window.vm.runtime) return;
+            for(let key in window.wLockedVars) {
+                let parts = key.split('_locked_');
+                if(parts.length !== 2) continue;
+                let target = window.vm.runtime.targets.find(t=>t.id===parts[0]);
+                if(target && target.variables[parts[1]]) {
+                    target.variables[parts[1]].value = window.wLockedVars[key];
+                }
+            }
+        }, 16);
+
+        window._twToggleFPS=function(forceState){ window.wState.speed = typeof forceState === 'boolean' ? forceState : !window.wState.speed; let cb = document.getElementById('speed-toggle'); if(cb) cb.checked = window.wState.speed; let val = document.getElementById('speed-range') ? document.getElementById('speed-range').value : 60; const fps = window.wState.speed ? val : 30; if(window.vm && window.vm.setFramerate) window.vm.setFramerate(fps); else if(window.vm && window.vm.runtime) window.vm.runtime.frameLoop.framerate=fps; window._updateKeybindsList(); };
+        window._toggleWatermark=function(forceState){ window.wState.watermark = typeof forceState === 'boolean' ? forceState : !window.wState.watermark; let cb = document.getElementById('watermark-toggle'); if(cb) cb.checked = window.wState.watermark; let el = document.getElementById('w-client-hud'); if(el) el.style.display = window.wState.watermark ? 'flex' : 'none'; window._updateKeybindsList(); };
+        window._toggleKeys=function(forceState){ window.wState.keys = typeof forceState === 'boolean' ? forceState : !window.wState.keys; let cb = document.getElementById('keys-toggle'); if(cb) cb.checked = window.wState.keys; let el = document.getElementById('w-keystrokes'); if(el) el.style.display = window.wState.keys ? 'flex' : 'none'; window._updateKeybindsList(); };
+        window._toggleKeybindsListToggle=function(forceState){ window.wState.keybindsList = typeof forceState === 'boolean' ? forceState : !window.wState.keybindsList; let cb = document.getElementById('keybinds-toggle'); if(cb) cb.checked = window.wState.keybindsList; window._updateKeybindsList(); };
+        window._toggleClick=function(forceState){ window.wState.click = typeof forceState === 'boolean' ? forceState : !window.wState.click; let cb = document.getElementById('click-toggle'); if(cb) cb.checked = window.wState.click; window._updateKeybindsList(); };
+        window._toggleTrail=function(forceState){ window.wState.trail = typeof forceState === 'boolean' ? forceState : !window.wState.trail; let cb = document.getElementById('trail-toggle'); if(cb) cb.checked = window.wState.trail; let el = document.getElementById('w-trail-canvas'); if(el) el.style.display = window.wState.trail ? 'block' : 'none'; window._updateKeybindsList(); };
+        window._toggleMenuBlur=function(forceState){ window.wState.menuBlur = typeof forceState === 'boolean' ? forceState : !window.wState.menuBlur; let cb = document.getElementById('menublur-toggle'); if(cb) cb.checked = window.wState.menuBlur; let isMenuOpen = !document.getElementById('w-client-gui').classList.contains('hidden'); let el = document.getElementById('w-menu-backdrop'); if(el) el.style.display = (window.wState.menuBlur && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
+        window._toggleMenuSnow=function(forceState){ window.wState.menuSnow = typeof forceState === 'boolean' ? forceState : !window.wState.menuSnow; let cb = document.getElementById('menusnow-toggle'); if(cb) cb.checked = window.wState.menuSnow; let isMenuOpen = !document.getElementById('w-client-gui').classList.contains('hidden'); let el = document.getElementById('w-snow-canvas'); if(el) el.style.display = (window.wState.menuSnow && isMenuOpen) ? 'block' : 'none'; window._updateKeybindsList(); };
+        window._toggleFilter=function(forceState){ window.wState.filter = typeof forceState === 'boolean' ? forceState : !window.wState.filter; let cb = document.getElementById('filter-toggle'); if(cb) cb.checked = window.wState.filter; const canvas=document.querySelector('canvas'); if(!canvas) return; if(window.wState.filter){ switch(window.wCurrentFilter){ case 'grayscale': canvas.style.filter='grayscale(100%)'; break; case 'invert': canvas.style.filter='invert(100%)'; break; case 'sepia': canvas.style.filter='sepia(100%)'; break; case 'contrast': canvas.style.filter='contrast(150%)'; break; case 'blur': canvas.style.filter='blur(3px)'; break; } } else { canvas.style.filter='none'; } window._updateKeybindsList(); };
+        
+        window._toggleCloneLimit=function(forceState){
+            window.wState.cloneLimit = typeof forceState === 'boolean' ? forceState : !window.wState.cloneLimit;
+            let cb = document.getElementById('clonelimit-toggle'); if(cb) cb.checked = window.wState.cloneLimit;
+            if(window.wState.cloneLimit) {
+                if(!window._origClonesAvailable && window.vm && window.vm.runtime) {
+                    window._origClonesAvailable = window.vm.runtime.clonesAvailable;
+                    window.vm.runtime.clonesAvailable = function() { return true; };
+                }
+            } else {
+                if(window._origClonesAvailable && window.vm && window.vm.runtime) {
+                    window.vm.runtime.clonesAvailable = window._origClonesAvailable;
+                    window._origClonesAvailable = null;
+                }
+            }
+            window._updateKeybindsList();
+        };
+
+        window._toggleSpoof = function(forceState) {
+            window.wState.spoof = typeof forceState === 'boolean' ? forceState : !window.wState.spoof;
+            let cb = document.getElementById('spoof-toggle'); if(cb) cb.checked = window.wState.spoof;
+            if (!window._origGetUsername && window.vm && window.vm.runtime.ioDevices.userData) {
+                window._origGetUsername = window.vm.runtime.ioDevices.userData.getUsername;
+                window.vm.runtime.ioDevices.userData.getUsername = function() {
+                    if (window.wState.spoof) { let input = document.getElementById('spoof-input'); return input ? (input.value || "Wise User") : "Wise User"; }
+                    return window._origGetUsername.apply(this, arguments);
+                };
+            }
+            window._updateHud(); window._updateKeybindsList();
+        };
+
+        window._toggleTimer = function(forceState) {
+            window.wState.timerHack = typeof forceState === 'boolean' ? forceState : !window.wState.timerHack;
+            let cb = document.getElementById('timer-toggle'); if(cb) cb.checked = window.wState.timerHack;
+            if (!window._origProjectTimer && window.vm && window.vm.runtime.ioDevices.clock) {
+                window._origProjectTimer = window.vm.runtime.ioDevices.clock.projectTimer;
+                window.vm.runtime.ioDevices.clock.projectTimer = function() {
+                    if (window.wState.timerHack) { let val = document.getElementById('timer-input') ? parseFloat(document.getElementById('timer-input').value) : 0; return isNaN(val) ? 0 : val; }
+                    return window._origProjectTimer.call(this);
+                };
+            }
+            window._updateKeybindsList();
+        };
+
+        window._executeBind=function(action){
+            if(action === 'speed') window._twToggleFPS(); if(action === 'watermark') window._toggleWatermark();
+            if(action === 'keys') window._toggleKeys(); if(action === 'keybindsList') window._toggleKeybindsListToggle();
+            if(action === 'click') window._toggleClick(); if(action === 'trail') window._toggleTrail();
+            if(action === 'filter') window._toggleFilter(); if(action === 'spoof') window._toggleSpoof();
+            if(action === 'timerHack') window._toggleTimer(); if(action === 'cloneLimit') window._toggleCloneLimit();
+            if(action === 'panic') window._panic();
+        };
+
+        window._updateSlider=function(el){
+            if(!el)return;
+            const val=(el.value-el.min)/(el.max-el.min)*100;
+            el.style.background=`linear-gradient(to right, var(--w-main-color) ${val}%, var(--w-track) ${val}%)`;
+        };
+
+        window._toggleCard = function(btn) {
+            const card = btn.closest('.w-card');
+            const body = card.querySelector('.w-card-body');
+            const isExpanded = card.classList.contains('w-expanded');
+            if(!isExpanded){
+                card.classList.add('w-expanded'); btn.style.transform = 'rotate(180deg)';
+                if(card.id === 'card-varhack') window._scanVars();
+                setTimeout(() => { if(card.classList.contains('w-expanded')) body.style.overflow = 'visible'; }, 300);
+            } else {
+                body.style.overflow = 'hidden'; body.querySelectorAll('.w-select-items').forEach(el => el.style.display = 'none');
+                requestAnimationFrame(() => { card.classList.remove('w-expanded'); btn.style.transform = 'rotate(0deg)'; });
+            }
+        };
+
+        window._twSetSingleVar=function(tId,vId,iId){ let val=document.getElementById(iId).value; let t=window.vm.runtime.targets.find(t=>t.id===tId); if(t&&t.variables[vId])t.variables[vId].value=isNaN(val)?val:Number(val); };
+        
+        window._toggleVarLock=function(tId, vId, iId){
+            let key = tId + '_locked_' + vId;
+            let btn = document.getElementById('btn-lock-' + tId + '-' + vId);
+            if(window.wLockedVars[key] !== undefined) {
+                delete window.wLockedVars[key];
+                if(btn) { btn.innerHTML = iconUnlock; btn.style.color = 'var(--w-subtext)'; }
+            } else {
+                let val = document.getElementById(iId).value;
+                window.wLockedVars[key] = isNaN(val) ? val : Number(val);
+                if(btn) { btn.innerHTML = iconLock; btn.style.color = '#ff4444'; }
+            }
+        };
+
+        const iconLock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM9 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9z"/></svg>`;
+        const iconUnlock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>`;
+        const iconFire = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.56 15.36c-.45-2.64-1.95-4.2-3.1-5.18-.72-.61-1.39-1.18-1.57-2.12-.04-.21-.07-.44-.07-.72 0-2.19 1.4-3.5 1.54-3.64l.32-.31-.4-.2c-.89-.44-2.07-.63-3.21-.36-1.53.36-2.61 1.54-3.03 3.29-.29 1.25-.13 2.61.42 3.8.31.68.78 1.41 1.34 2.11-.27.42-.51.84-.71 1.27C9.37 11.23 8 9.53 8 9.53L7.75 9.2l-.24.36c-.7 1.05-1.1 2.22-1.1 3.32 0 1.7.67 3.31 1.89 4.54 1.22 1.22 2.84 1.9 4.55 1.9 2.59 0 4.88-1.58 5.71-4.04.28-.82.35-1.63.22-2.42h-.22zM12.86 17.5c-1.33 0-2.42-1.09-2.42-2.42 0-.83.43-1.6 1.13-2.03.22-.14.4-.33.52-.56.12-.23.15-.5.08-.75-.07-.25-.23-.46-.44-.6-.21-.13-.48-.16-.72-.08-.73.25-1.33.72-1.74 1.38-.45.71-.69 1.52-.69 2.37 0 2.05 1.67 3.72 3.72 3.72 2.05 0 3.72-1.67 3.72-3.72 0-.25-.03-.5-.08-.75l-1.07.72c-.68.46-1.06 1.22-1.06 2.05z"/></svg>`;
+
+        window._scanVars=function(){
+            const container=document.getElementById('var-list-container'); if(!container)return; container.style.display='flex'; container.innerHTML=''; let count=0;
+            window.vm.runtime.targets.forEach(target=>{
+                for(let id in target.variables){
+                    let v=target.variables[id];
+                    if(v.type===''){
+                        count++; let owner=target.isStage?'Global':target.sprite.name; let inputId=`var-input-${target.id}-${id}`;
+                        let sName = String(v.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        let sVal = String(v.value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        
+                        let lockKey = target.id + '_locked_' + id;
+                        let isLocked = window.wLockedVars[lockKey] !== undefined;
+                        let lockSvg = isLocked ? iconLock : iconUnlock;
+                        let lockStyle = isLocked ? 'color:#ff4444;' : 'color:var(--w-subtext);';
+
+                        container.innerHTML+=`<div class="w-var-item" style="width: 100%; min-width: 0;"><div style="display:flex; flex-direction:column; width: 50%; overflow: hidden; min-width: 0; padding-right: 5px;"><span style="font-size:12px; color:var(--w-text); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; display: block;" title="${sName}">${sName}</span><span style="font-size:10px; color:var(--w-subtext); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${owner}</span></div><div style="display:flex; gap:6px; align-items: center; width: 50%; justify-content: flex-end; min-width: 0;"><input type="text" id="${inputId}" value="${sVal}" class="w-var-input" style="min-width: 20px; width: 100%; max-width: 70px;"><button class="w-btn w-btn-icon" style="flex-shrink: 0; padding:4px 6px;" onclick="window._twSetSingleVar('${target.id}', '${id}', '${inputId}')">${iconRefresh}</button><button id="btn-lock-${target.id}-${id}" class="w-btn w-btn-icon" style="flex-shrink: 0; padding:4px 6px; ${lockStyle}" onclick="window._toggleVarLock('${target.id}', '${id}', '${inputId}')">${lockSvg}</button></div></div>`;
+                    }
+                }
+            });
+            if(count===0)container.innerHTML=`<div style="font-size:12px; color:var(--w-subtext); text-align:center; padding: 10px 0;">${t('notFound')}</div>`;
+        };
+
+        window._fireBroadcast = function(name) {
+            if(window.vm && window.vm.runtime) window.vm.runtime.startHats('event_whenbroadcastreceived', {BROADCAST_OPTION: name});
+        };
+
+        window._scanBroadcasts = function() {
+            const container = document.getElementById('broadcast-list-container'); if(!container) return; container.style.display = 'flex'; container.innerHTML = '';
+            let broadcasts = new Set();
+            window.vm.runtime.targets.forEach(target => {
+                for(let blockId in target.blocks._blocks) {
+                    let block = target.blocks._blocks[blockId];
+                    if(block.opcode === 'event_whenbroadcastreceived') {
+                        let bName = block.fields.BROADCAST_OPTION.value;
+                        if(bName) broadcasts.add(bName);
+                    }
+                    if(block.opcode === 'event_broadcast' || block.opcode === 'event_broadcastandwait') {
+                         let input = block.inputs.BROADCAST_INPUT;
+                         if(input && input.block) {
+                             let innerBlock = target.blocks._blocks[input.block];
+                             if(innerBlock && innerBlock.fields.BROADCAST_OPTION) broadcasts.add(innerBlock.fields.BROADCAST_OPTION.value);
+                         }
+                    }
+                }
+            });
+            if(broadcasts.size === 0) { container.innerHTML = `<div style="font-size:12px; color:var(--w-subtext); text-align:center; padding: 10px 0;">${t('notFound')}</div>`; return; }
+            Array.from(broadcasts).forEach(name => {
+                let sName = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                let safeName = sName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                container.innerHTML += `<div class="w-var-item" style="width: 100%; min-width: 0; padding:8px 0;"><span style="font-size:12px; color:var(--w-text); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; display: block;" title="${sName}">${sName}</span><button class="w-btn w-btn-icon" style="flex-shrink: 0; color: #ff8c00; padding:4px 8px;" onclick="window._fireBroadcast('${safeName}')">${iconFire}</button></div>`;
+            });
+        };
+
+        window._updateHud=function(){
+            let displayUser = userName;
+            if (window.wState.spoof && document.getElementById('spoof-input')) { displayUser = document.getElementById('spoof-input').value || "Wise User"; }
+            const hud=document.getElementById('w-client-hud');
+            if(hud)hud.innerHTML=`<b>Wise</b><span class="w-hud-sep">|</span><span class="w-hud-txt">X: ${window.mouseX} Y: ${window.mouseY}</span><span class="w-hud-sep">|</span><span class="w-hud-txt">${projectName}</span><span class="w-hud-sep">|</span><span class="w-hud-txt">${displayUser}</span>`;
+        };
+
+        window._toggleAccentMenu = function(e) {
+            if(e) e.stopPropagation();
+            let m = document.getElementById('w-accent-menu');
+            if(m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+        };
+        
+        window._setAccentColor = function(color, el) {
+            document.documentElement.style.setProperty('--w-main-color', color);
+            document.querySelectorAll('.w-color-dot').forEach(d => {
+                if(!d.classList.contains('w-color-picker-dot')) d.innerHTML = '';
+            });
+            if(el && !el.classList.contains('w-color-picker-dot')) {
+                el.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--w-bg-base)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+            }
+        };
+
+        window._updateClickColor=function(color){clickEffectColor=color;};
+        window._updateTrailColor=function(color){trailEffectColor=color;};
+        window._updateClickSize=function(val){ clickEffectSize=val; document.documentElement.style.setProperty('--w-click-size', val + 'px'); };
+        window._updateClickWidth=function(val){ clickEffectWidth=val; document.documentElement.style.setProperty('--w-click-width', val + 'px'); };
+
+        window._panic=function(){
+            ['w-client-gui', 'w-client-hud', 'w-keybinds-list', 'w-keystrokes', 'w-edit-overlay', 'w-bind-modal', 'w-action-modal', 'w-menu-backdrop', 'w-snow-canvas', 'w-trail-canvas'].forEach(id=>{
+                let el=document.getElementById(id); if(el) el.remove();
+            });
+            if(window.vm && window.vm.setFramerate) window.vm.setFramerate(30);
+            else if(window.vm && window.vm.runtime) window.vm.runtime.frameLoop.framerate=30;
+            const canvas=document.querySelector('canvas'); if(canvas) canvas.style.filter='none';
+            document.removeEventListener('mousemove', wOnMouseMove); document.removeEventListener('keydown', wOnKeyDown);
+            document.removeEventListener('keyup', wOnKeyUp); document.removeEventListener('mousedown', wOnMouseDown);
+            document.removeEventListener('mouseup', wOnMouseUp);
+        };
+
+        window._setTheme=function(theme){
+            currentTheme=theme;
+            const els=[document.getElementById('w-client-gui'),document.getElementById('w-client-hud'),document.getElementById('w-keybinds-list'),document.getElementById('w-keystrokes'),document.getElementById('w-bind-modal'),document.getElementById('w-action-modal')];
+            els.forEach(el=>{ if(el) theme==='light'?el.classList.add('w-light'):el.classList.remove('w-light'); });
+            document.querySelectorAll('input[type="range"]').forEach(el=>window._updateSlider(el));
+        };
+
+        // --- МОДАЛКИ И КОНФИГИ ---
+        window._closeActionModal = function() {
+            document.getElementById('w-action-modal').style.display = 'none';
+        };
+
+        window._exportConfigData = function() {
+            return {
+                state: window.wState, binds: window.wBinds, filter: window.wCurrentFilter,
+                theme: currentTheme, lang: currentLang,
+                clickColor: clickEffectColor, clickSize: clickEffectSize, clickWidth: clickEffectWidth, trailColor: trailEffectColor,
+                accent: getComputedStyle(document.documentElement).getPropertyValue('--w-main-color').trim(),
+                spoofName: document.getElementById('spoof-input') ? document.getElementById('spoof-input').value : "",
+                timerVal: document.getElementById('timer-input') ? document.getElementById('timer-input').value : ""
+            };
+        };
+
+        window._loadConfig = function(id) {
+            let configs = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+            let conf = configs.find(c => c.id === id);
+            if(!conf) return;
+            try {
+                let d = typeof conf.data === 'string' ? JSON.parse(conf.data) : conf.data;
+                window.wState = d.state || window.wState; window.wBinds = d.binds || window.wBinds; window.wCurrentFilter = d.filter || window.wCurrentFilter;
+                clickEffectColor = d.clickColor || '#ffffff'; clickEffectSize = d.clickSize || 60; clickEffectWidth = d.clickWidth || 3; trailEffectColor = d.trailColor || '#ffffff';
+                window._updateAccentColor(d.accent || '#ffffff'); window._updateClickSize(clickEffectSize); window._updateClickWidth(clickEffectWidth);
+                window._setTheme(d.theme || 'dark'); currentLang = d.lang || 'ru';
+                
+                let sInput = document.getElementById('spoof-input'); if(sInput && d.spoofName !== undefined) sInput.value = d.spoofName;
+                let tInput = document.getElementById('timer-input'); if(tInput && d.timerVal !== undefined) tInput.value = d.timerVal;
+
+                window._twToggleFPS(window.wState.speed); window._toggleWatermark(window.wState.watermark); window._toggleKeys(window.wState.keys);
+                window._toggleKeybindsListToggle(window.wState.keybindsList); window._toggleClick(window.wState.click); window._toggleTrail(window.wState.trail);
+                window._toggleMenuBlur(window.wState.menuBlur); window._toggleMenuSnow(window.wState.menuSnow); window._toggleFilter(window.wState.filter);
+                window._toggleSpoof(window.wState.spoof); window._toggleTimer(window.wState.timerHack); window._toggleCloneLimit(window.wState.cloneLimit);
+                
+                window._setLang(currentLang); window._updateBindBadges(); window._switchTab('configs');
+            } catch(e) { console.error("Config load error", e); }
+        };
+
+        window._showCreateConfig = function() {
+            let m = document.getElementById('w-action-modal');
+            m.innerHTML = `<div class="w-modal-box"><div class="w-modal-title">${t('cfgName')}</div><input type="text" id="w-new-cfg-name" class="w-modal-input" placeholder="My Config"><div class="w-modal-btns"><button class="w-btn w-pill-primary" onclick="window._confirmCreateConfig()">${t('create')}</button><button class="w-btn" onclick="window._closeActionModal()">${t('bindCancel')}</button></div></div>`;
+            m.style.display = 'flex';
+        };
+
+        window._confirmCreateConfig = function() {
+            let name = document.getElementById('w-new-cfg-name').value || "My Config";
+            let c = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+            c.push({id: Date.now(), name: name, author: userName, data: JSON.stringify(window._exportConfigData())});
+            localStorage.setItem('wConfigs', JSON.stringify(c));
+            window._closeActionModal(); window._switchTab('configs');
+        };
+
+        window._showImportConfig = function() {
+            let m = document.getElementById('w-action-modal');
+            m.innerHTML = `<div class="w-modal-box"><div class="w-modal-title">${t('importConfig')}</div><textarea id="w-import-cfg-data" class="w-modal-textarea" placeholder="{...}"></textarea><div class="w-modal-btns"><button class="w-btn w-pill-primary" onclick="window._confirmImportConfig()">${t('impBtn')}</button><button class="w-btn" onclick="window._closeActionModal()">${t('bindCancel')}</button></div></div>`;
+            m.style.display = 'flex';
+        };
+
+        window._confirmImportConfig = function() {
+            let text = document.getElementById('w-import-cfg-data').value;
+            try {
+                let parsed = JSON.parse(text); 
+                let c = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+                
+                let newName = parsed.name || "Imported Config";
+                let newAuthor = parsed.author || "Unknown";
+                let newData = parsed.data || text; 
+                
+                c.push({id: Date.now(), name: newName, author: newAuthor, data: typeof newData === 'string' ? newData : JSON.stringify(newData)});
+                localStorage.setItem('wConfigs', JSON.stringify(c));
+                window._closeActionModal(); window._switchTab('configs');
+            } catch(e) { alert("Invalid config format"); }
+        };
+
+        window._saveConfig = function(id) {
+            let configs = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+            let conf = configs.find(c => c.id === id);
+            if(conf) {
+                conf.data = JSON.stringify(window._exportConfigData());
+                localStorage.setItem('wConfigs', JSON.stringify(configs));
+                let m = document.getElementById('w-action-modal');
+                let exportStr = JSON.stringify(conf);
+                m.innerHTML = `<div class="w-modal-box"><div class="w-modal-title">Config Saved</div><textarea id="w-export-cfg-data" class="w-modal-textarea" readonly>${exportStr}</textarea><div class="w-modal-btns"><button class="w-btn w-pill-primary" onclick="navigator.clipboard.writeText(document.getElementById('w-export-cfg-data').value); this.innerText='Copied!';">${t('copyTxt')}</button><button class="w-btn" onclick="window._closeActionModal()">${t('close')}</button></div></div>`;
+                m.style.display = 'flex'; window._switchTab('configs');
+            }
+        };
+
+        window._deleteConfig = function(id) {
+            let configs = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+            configs = configs.filter(c => c.id !== id);
+            localStorage.setItem('wConfigs', JSON.stringify(configs));
+            window._switchTab('configs');
+        };
+
+        window._switchConfigTab = function(tab) {
+            window.wCurrentConfigTab = tab;
+            window._switchTab('configs');
+        };
+
+        const iconSave=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>`;
+        const iconPlus=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`;
+        const iconImport=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>`;
+        const iconLoad=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+        const iconDelete=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+
+        window._renderConfigsList = function() {
+            let el = document.getElementById('local-configs-list');
+            if(!el) return;
+            let c = JSON.parse(localStorage.getItem('wConfigs') || '[]');
+            if(c.length === 0) { el.innerHTML = `<div style="text-align:center; color:var(--w-subtext); margin-top:20px;">${t('notFound')}</div>`; return; }
+            let html = '';
+            c.forEach(conf => {
+                html += `<div class="w-config-item"><div style="display:flex; align-items:center; gap:15px;"><div style="width:40px; height:40px; border-radius:50%; background:var(--w-hover); display:flex; align-items:center; justify-content:center; color:var(--w-text);">${iconUser}</div><div class="w-config-info"><div class="w-config-name" style="margin-bottom:2px;">${conf.name}</div><div class="w-config-author">Автор: <b style="color:var(--w-text); font-weight:600;">${conf.author}</b></div></div></div><div class="w-config-actions"><button class="w-btn w-btn-icon" title="Save" onclick="window._saveConfig(${conf.id})">${iconSave}</button><button class="w-btn w-btn-icon" title="Load" onclick="window._loadConfig(${conf.id})">${iconLoad}</button><button class="w-btn w-btn-icon" style="color:#ff4444;" onclick="window._deleteConfig(${conf.id})">${iconDelete}</button></div></div>`;
+            });
+            el.innerHTML = html;
+        };
+
+        window._setLang=function(lang){
+            currentLang=lang;
+            ['danger', 'visuals', 'more', 'settings'].forEach(cat => { let el = document.getElementById('cat-'+cat); if(el) el.innerText = t(cat+'Cat'); });
+            ['danger', 'hud', 'display', 'user', 'misc', 'configs'].forEach(tab => { let el = document.getElementById('txt-'+tab); if(el) el.innerText = t(tab+'Tab'); });
+            let gi=document.getElementById('global-search-input');
+            if(gi)gi.placeholder=t('search');
+            window._switchTab(currentTab);
+        };
+
+        window._filterGlobal=function(query){
+            let q=query.toLowerCase();
+            document.querySelectorAll('#w-content-area .w-card').forEach(card=>{
+                const title=card.querySelector('.w-card-title')?.innerText.toLowerCase() || '';
+                const sub=card.querySelector('.w-card-sub')?.innerText.toLowerCase() || '';
+                card.style.display=(title.includes(q)||sub.includes(q))?'flex':'none';
+            });
+        };
+
+        window._openBindModal=function(actionId, titleName){
+            window.wCurrentBindId=actionId;
+            window.wIsBinding=true;
+            let currentKey = Object.keys(window.wBinds).find(key => window.wBinds[key] === actionId);
+            document.getElementById('w-bind-title').innerText = t('bindTitle') + titleName;
+            document.getElementById('w-bind-status').innerText = currentKey ? t('bindCurr') + formatKey(currentKey) : t('bindPress');
+            document.getElementById('w-btn-delete-bind').style.display = currentKey ? 'block' : 'none';
+            document.getElementById('w-bind-modal').style.display = 'flex';
+        };
+
+        window._closeBindModal=function(){
+            window.wIsBinding=false; window.wCurrentBindId=null;
+            document.getElementById('w-bind-modal').style.display = 'none';
+        };
+
+        window._removeBind=function(){
+            let currentKey = Object.keys(window.wBinds).find(key => window.wBinds[key] === window.wCurrentBindId);
+            if(currentKey) delete window.wBinds[currentKey];
+            window._closeBindModal(); window._updateBindBadges(); window._updateKeybindsList();
+        };
+
+        window._updateBindBadges=function(){
+            document.querySelectorAll('.w-bind-badge').forEach(el => el.innerText = '');
+            for(let key in window.wBinds) {
+                let action = window.wBinds[key];
+                let badge = document.getElementById('bind-badge-' + action);
+                if(badge) badge.innerText = '[' + formatKey(key) + ']';
+            }
+        };
+
+        window._toggleEditMode=function(){
+            isEditingHud=true;
+            document.getElementById('w-client-gui').style.display='none';
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ document.getElementById(id).classList.add('w-editing'); });
+            let overlay=document.createElement('div'); overlay.id='w-edit-overlay';
+            overlay.innerHTML=`<div class="w-edit-panel"><button id="w-align-btn" class="w-pill-btn" onclick="window._toggleAlign()">${window.wAlignmentEnabled?t('alignOn'):t('alignOff')}</button><button class="w-pill-btn w-pill-primary" onclick="window._exitEditMode()">${t('saveExit')}</button></div><div id="w-guide-x"></div>`;
+            document.body.appendChild(overlay);
+            if(window.wAlignmentEnabled){ document.getElementById('w-align-btn').style.background="var(--w-main-color)"; document.getElementById('w-align-btn').style.color="var(--w-bg-base)"; }
+        };
+
+        window._toggleAlign=function(){
+            window.wAlignmentEnabled=!window.wAlignmentEnabled; let btn=document.getElementById('w-align-btn');
+            btn.innerText=window.wAlignmentEnabled?t('alignOn'):t('alignOff');
+            btn.style.background=window.wAlignmentEnabled?"var(--w-main-color)":""; btn.style.color=window.wAlignmentEnabled?"var(--w-bg-base)":"";
+        };
+
+        window._exitEditMode=function(){
+            isEditingHud=false;
+            ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].forEach(id=>{ document.getElementById(id).classList.remove('w-editing'); });
+            document.getElementById('w-client-gui').style.display='flex';
+            document.getElementById('w-edit-overlay').remove();
+        };
+
+        window._showGuideX=function(x){ let guide=document.getElementById('w-guide-x'); if(guide){guide.style.display='block'; guide.style.left=x+'px';} };
+        window._hideGuideX=function(){ let guide=document.getElementById('w-guide-x'); if(guide)guide.style.display='none'; };
+
+        document.documentElement.style.setProperty('--w-click-size', clickEffectSize + 'px');
+        document.documentElement.style.setProperty('--w-click-width', clickEffectWidth + 'px');
+        document.documentElement.style.setProperty('--w-main-color', '#ffffff');
+
+        const style=document.createElement('style');
+        style.innerHTML=`
+            :root{--w-bg-base:#0f0f11;--w-border:rgba(255,255,255,0.05);--w-text:#e2e2e2;--w-subtext:#8b8b91;--w-hover:#18181c;--w-active:#1d1d23;--w-main-color:#ffffff;--w-track:#1a1a20;--w-ks-bg:rgba(15,15,17,0.7)}.w-light{--w-bg-base:#f4f4f5;--w-border:rgba(0,0,0,0.1);--w-text:#000000;--w-subtext:#666666;--w-hover:#e5e5ea;--w-active:#d1d1d6;--w-main-color:#000000;--w-track:#d1d1d6;--w-ks-bg:rgba(244,244,245,0.7)}#w-client-gui *{box-sizing:border-box}
+            #w-keystrokes{position:fixed;top:50px;left:12px;display:flex;flex-direction:column;gap:4px;z-index:99999997;pointer-events:none;font-family:-apple-system,sans-serif}.w-ks-row{display:flex;gap:4px;justify-content:center}.w-ks-key{background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border-radius:4px;width:32px;height:32px;transition:0.1s all ease-out}.w-ks-key.mouse{width:50px;font-size:11px}.w-ks-key.space{width:104px;height:24px;font-size:14px}.w-ks-key.active{background:var(--w-main-color);color:var(--w-bg-base);border-color:var(--w-bg-base);transform:scale(0.95)}
+            #w-client-hud{position:fixed;top:12px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;font-weight:500;padding:8px 14px;border-radius:6px;z-index:99999998;pointer-events:none;display:flex;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:0.3s}#w-client-hud b{font-weight:700;color:var(--w-main-color);letter-spacing:0.5px}.w-hud-sep{color:var(--w-subtext);opacity:0.4;font-size:14px;margin:0 12px;user-select:none}.w-hud-txt{color:var(--w-text);opacity:0.9}
+            #w-keybinds-list{position:fixed;top:160px;left:12px;background:var(--w-ks-bg);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid var(--w-main-color);color:var(--w-text);font-family:-apple-system,sans-serif;font-size:13px;padding:12px 14px;border-radius:6px;z-index:99999997;pointer-events:none;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:6px;}
+            .w-kb-title{font-weight:700;margin-bottom:6px;border-bottom:1px solid var(--w-border);padding-bottom:6px;color:var(--w-text);} .w-kb-item{display:flex;justify-content:space-between;align-items:center;gap:15px;} .w-kb-on{color:var(--w-text);} .w-kb-off{color:var(--w-subtext);} .w-kb-key{background:var(--w-hover);padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;}
+            .w-click-ripple{position:fixed;width:var(--w-click-size);height:var(--w-click-size);background:none;border-style:solid;border-color:#ffffff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%) scale(0);opacity:1;z-index:100000000;animation:click-ripple-anim 0.6s ease-out}@keyframes click-ripple-anim{0%{transform:translate(-50%,-50%) scale(0);opacity:1;border-width:var(--w-click-width)}100%{transform:translate(-50%,-50%) scale(1);opacity:0;border-width:1px}}.w-editing{pointer-events:auto!important;cursor:move!important;outline:2px dashed var(--w-main-color)!important;background:var(--w-active)!important}#w-guide-x{position:fixed;top:0;bottom:0;width:1px;background:#ff3333;z-index:999999998;display:none;pointer-events:none}.w-edit-panel{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:999999999}.w-pill-btn{background:var(--w-bg-base);color:var(--w-text);padding:12px 24px;border-radius:30px;border:1px solid var(--w-border);font-family:-apple-system,sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:0.2s}.w-pill-primary{background:var(--w-main-color);color:var(--w-bg-base);border:none}.w-pill-btn:hover{transform:scale(1.05)}
+            #w-client-gui{position:fixed;top:50px;left:50px;width:850px;height:500px;background:var(--w-bg-base);color:var(--w-text);z-index:99999999;border-radius:8.8px;font-family:-apple-system,sans-serif;box-shadow:0 15px 40px rgba(0,0,0,0.9);border:1px solid var(--w-border);display:flex;flex-direction:row;user-select:none;overflow:hidden;transition:opacity 0.25s ease,transform 0.25s ease,background 0.3s,color 0.3s;opacity:1;transform:scale(1)}#w-client-gui.hidden{opacity:0;transform:scale(0.96);pointer-events:none}
+            .w-sidebar{width:180px;background:transparent;border-right:1px solid var(--w-border);display:flex;flex-direction:column;justify-content:space-between;transition:0.3s}.w-sidebar-top{display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;max-height:calc(100% - 50px);}.w-sidebar-top::-webkit-scrollbar{width:0px;}.w-sidebar-bot{display:flex;gap:6px;padding:10px;border-top:1px solid var(--w-border)}.w-bot-btn{flex:1;display:flex;justify-content:center;align-items:center;background:var(--w-hover);color:var(--w-subtext);border-radius:6px;padding:6px 0;cursor:pointer;transition:0.2s}.w-bot-btn:hover,.w-bot-btn.active{background:var(--w-active);color:var(--w-text)}.w-drag-header{padding:10px;cursor:grab;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--w-border);height:50px}.w-drag-header svg{max-width:216px;max-height:48px}.w-drag-header svg path,.w-drag-header svg text{fill:var(--w-text)!important}.w-cat-title{font-size:10px;color:var(--w-subtext);margin:10px 15px 4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.w-tab{padding:7px 15px;margin:1px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--w-subtext);display:flex;align-items:center;gap:10px;font-weight:500;transition:0.2s ease}.w-tab:hover{background:var(--w-hover);color:var(--w-text)}.w-tab.active{background:var(--w-active);color:var(--w-text)}.w-icon{width:16px;height:16px;fill:currentColor}.w-main{flex:1;display:flex;flex-direction:column;background:transparent}.w-topbar{padding:0 25px;height:50px;border-bottom:1px solid var(--w-border);font-size:18px;color:var(--w-subtext);display:flex;align-items:center;transition:0.3s}.w-topbar strong{color:var(--w-text);font-weight:600;margin-left:5px}.w-content{padding:15px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px}.w-tab-grid{display:flex;gap:12px;align-items:flex-start;width:100%;margin-bottom:12px}.w-masonry-col{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0}
+            .w-search-box{width:100%;margin-bottom:5px;background:var(--w-hover);border:1px solid var(--w-border);color:var(--w-text);padding:12px 15px;border-radius:6px;font-size:13px;outline:none;transition:0.3s}.w-card{background:transparent;border:1px solid var(--w-border);border-radius:8px;display:flex;flex-direction:column;transition:0.3s;width:100%;position:relative;z-index:1}.w-card.w-expanded{z-index:5}.w-card-header{padding:15px;display:flex;justify-content:space-between;align-items:center;border-radius:8px}.w-card-info{display:flex;flex-direction:column;gap:4px}.w-card-title{font-size:14px;font-weight:600;color:var(--w-text);display:flex;align-items:center;gap:8px}.w-bind-badge{font-size:10px;color:var(--w-bg-base);background:var(--w-main-color);padding:2px 6px;border-radius:4px;font-weight:700}.w-bind-badge:empty{display:none}.w-card-sub{font-size:12px;color:var(--w-subtext);font-weight:500}.w-card-controls{display:flex;align-items:center;gap:10px}.w-expand-btn{background:transparent;border:1px solid var(--w-border);color:var(--w-subtext);border-radius:6px;width:26px;height:26px;display:flex;justify-content:center;align-items:center;cursor:pointer;transition:0.2s}.w-expand-btn:hover{background:var(--w-hover);color:var(--w-text)}.w-btn{background:var(--w-hover);color:var(--w-text);border:1px solid var(--w-border);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;transition:0.2s;display:flex;align-items:center;justify-content:center}.w-btn:hover{background:var(--w-active);border-color:var(--w-subtext)}.w-btn-icon{padding:6px}
+            .w-custom-select-container{position:relative;user-select:none;width:130px;font-family:-apple-system,sans-serif;z-index:1}.w-select-selected{background:var(--w-hover);color:var(--w-text);border:1px solid var(--w-border);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:0.2s}.w-select-selected:hover{background:var(--w-active)}.w-select-items{display:none;position:absolute;background:#1a1a20;border:1px solid var(--w-border);top:100%;left:0;right:0;z-index:999;border-radius:6px;margin-top:4px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5)}.w-light .w-select-items{background:#ffffff;box-shadow:0 4px 12px rgba(0,0,0,0.1)}.w-select-items div{padding:8px 10px;font-size:12px;color:var(--w-subtext);cursor:pointer;transition:0.2s}.w-select-items div:hover,.w-select-items div.active{background:var(--w-active);color:var(--w-text)}.w-switch{position:relative;display:inline-block;width:36px;height:20px}.w-switch input{opacity:0;width:0;height:0}.w-slider-toggle{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:var(--w-hover);transition:.2s;border-radius:20px}.w-slider-toggle:before{position:absolute;content:"";height:14px;width:14px;left:3px;bottom:3px;background:var(--w-subtext);transition:.2s;border-radius:50%}input:checked+.w-slider-toggle{background:var(--w-text)}input:checked+.w-slider-toggle:before{transform:translateX(16px);background:var(--w-bg-base)}
+            .w-card-body{max-height:0;padding:0 15px!important;overflow:hidden;transition:max-height 0.35s cubic-bezier(0,1,0,1),padding 0.3s ease,opacity 0.2s ease;opacity:0;border-top:1px solid transparent;margin-top:-5px}.w-card.w-expanded .w-card-body{max-height:400px;padding:15px!important;opacity:1;border-top-color:var(--w-border);transition:max-height 0.4s ease-in-out,padding 0.3s ease,opacity 0.3s ease 0.1s}.w-setting-title{font-size:13px;font-weight:600;color:var(--w-text);margin-bottom:2px}.w-setting-sub{font-size:12px;color:var(--w-subtext);margin-bottom:12px;line-height:1.4}.w-range-container{display:flex;flex-direction:column;gap:8px}.w-range-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--w-subtext);font-weight:600}.w-range-labels span:last-child{color:var(--w-main-color);font-weight:600}.w-range{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:linear-gradient(to right,var(--w-main-color) 100%,var(--w-track) 100%);outline:none;cursor:pointer}.w-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--w-bg-base);border:3px solid var(--w-main-color);cursor:pointer;box-shadow:0 0 5px rgba(0,0,0,0.5)}.w-color-picker-container{display:flex;align-items:center;gap:8px}
+            input[type="color"]#click-color,input[type="color"]#trail-color{border:none;width:40px;height:20px;border-radius:4px;background:none;cursor:pointer;padding:0}input[type="color"]#click-color::-webkit-color-swatch-wrapper,input[type="color"]#trail-color::-webkit-color-swatch-wrapper{padding:0}input[type="color"]#click-color::-webkit-color-swatch,input[type="color"]#trail-color::-webkit-color-swatch{border:1px solid var(--w-border);border-radius:4px}
+            #var-list-container, #broadcast-list-container{margin-bottom:5px}.w-var-item{display:flex;justify-content:space-between;align-items:center;background:transparent;padding:6px 0;border-bottom:1px solid var(--w-border)}.w-var-item:last-child{border-bottom:none}.w-var-input{width:100%;max-width:80px;background:var(--w-bg-base);color:var(--w-text);border:1px solid var(--w-border);border-radius:4px;padding:5px;text-align:center;font-size:11px;outline:none;font-family:monospace}.w-var-input:focus{border-color:var(--w-subtext)}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--w-border);border-radius:10px}
+            .w-config-tabs { display: flex; gap: 10px; background: var(--w-bg-base); padding: 5px; border-radius: 8px; border: 1px solid var(--w-border); margin-bottom: 15px; } .w-config-tab { flex: 1; text-align: center; padding: 8px; cursor: pointer; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--w-subtext); transition: 0.2s; } .w-config-tab.active { background: var(--w-active); color: var(--w-text); }
+            .w-config-item { background: var(--w-bg-base); border: 1px solid var(--w-border); border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; } .w-config-info { display: flex; flex-direction: column; gap: 4px; } .w-config-name { font-size: 14px; font-weight: bold; color: var(--w-text); } .w-config-author { font-size: 11px; color: var(--w-subtext); } .w-config-actions { display: flex; gap: 8px; }
+            #w-accent-menu { position: absolute; bottom: 50px; left: 15px; background: var(--w-bg-base); border: 1px solid var(--w-border); border-radius: 8px; padding: 10px; display: none; gap: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 999; align-items: center; }
+            .w-color-dot { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; border: 1px solid var(--w-border); transition: 0.2s; }
+            .w-color-dot:hover { transform: scale(1.1); } .w-color-picker-dot { position: relative; overflow: hidden; background: var(--w-hover); } .w-color-picker-dot input { position: absolute; opacity: 0; width: 200%; height: 200%; cursor: pointer; }
+            .w-modal-box { background: var(--w-bg-base); border: 1px solid var(--w-border); padding: 20px; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; min-width: 300px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+            .w-modal-title { font-size: 16px; font-weight: bold; color: var(--w-text); text-align: center; }
+            .w-modal-input, .w-modal-textarea { background: var(--w-hover); color: var(--w-text); border: 1px solid var(--w-border); padding: 10px; border-radius: 6px; font-family: -apple-system, sans-serif; font-size: 13px; outline: none; width: 100%; }
+            .w-modal-textarea { height: 100px; resize: none; font-family: monospace; }
+            .w-modal-btns { display: flex; gap: 10px; justify-content: center; }
+        `;
+        document.head.appendChild(style);
+
+        const backdrop = document.createElement('div');
+        backdrop.id = "w-menu-backdrop";
+        backdrop.style.cssText = "display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.15); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:99999997; pointer-events:none; transition: opacity 0.3s;";
+        document.body.appendChild(backdrop);
+
+        const snowCanvas = document.createElement('canvas');
+        snowCanvas.id = "w-snow-canvas";
+        snowCanvas.style.cssText = "display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:99999998; pointer-events:none;";
+        document.body.appendChild(snowCanvas);
+
+        const trailCanvas = document.createElement('canvas');
+        trailCanvas.id = "w-trail-canvas";
+        trailCanvas.style.cssText = "display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:99999998; pointer-events:none;";
+        document.body.appendChild(trailCanvas);
+
+        const actionModal = document.createElement('div');
+        actionModal.id = "w-action-modal";
+        actionModal.style.cssText = "display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:999999999; font-family:-apple-system,sans-serif;";
+        document.body.appendChild(actionModal);
+
+        function resizeCanvases() {
+            if (snowCanvas) { snowCanvas.width = window.innerWidth; snowCanvas.height = window.innerHeight; }
+            if (trailCanvas) { trailCanvas.width = window.innerWidth; trailCanvas.height = window.innerHeight; }
+        }
+        window.addEventListener('resize', resizeCanvases);
+        resizeCanvases();
+
+        let ctxTrail = trailCanvas.getContext('2d');
+        let trails = [];
+        function drawTrail() {
+            if(!window.wState.trail) return requestAnimationFrame(drawTrail);
+            ctxTrail.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+            trails.push({x: window.mouseX, y: window.mouseY, life: 1});
+            for(let i=0; i<trails.length; i++) {
+                let p = trails[i];
+                ctxTrail.globalAlpha = p.life;
+                ctxTrail.fillStyle = trailEffectColor; 
+                ctxTrail.beginPath();
+                ctxTrail.arc(p.x, p.y, 4 * p.life, 0, Math.PI*2);
+                ctxTrail.fill();
+                p.life -= 0.035;
+            }
+            trails = trails.filter(p => p.life > 0);
+            requestAnimationFrame(drawTrail);
+        }
+        drawTrail();
+
+        let ctxSnow = snowCanvas.getContext('2d');
+        let snowflakes = Array.from({length: 120}, () => ({
+            x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight, r: Math.random() * 2.5 + 0.5, d: Math.random() * Math.PI * 2, speed: Math.random() * 1 + 0.5
+        }));
+
+        function drawSnow() {
+            if(!window.wState.menuSnow || document.getElementById('w-client-gui').classList.contains('hidden')) return requestAnimationFrame(drawSnow);
+            ctxSnow.clearRect(0,0,snowCanvas.width, snowCanvas.height);
+            ctxSnow.fillStyle = "rgba(255, 255, 255, 0.8)";
+            if(currentTheme === 'light') ctxSnow.fillStyle = "rgba(0, 0, 0, 0.5)"; 
+            ctxSnow.beginPath();
+            snowflakes.forEach(p => {
+                ctxSnow.moveTo(p.x, p.y);
+                ctxSnow.arc(p.x, p.y, p.r, 0, Math.PI*2, true);
+            });
+            ctxSnow.fill();
+            snowflakes.forEach(p => {
+                p.y += p.speed;
+                p.x += Math.sin(p.d) * 0.5;
+                p.d += 0.02;
+                if(p.y > snowCanvas.height) { p.x = Math.random() * snowCanvas.width; p.y = -5; }
+            });
+            requestAnimationFrame(drawSnow);
+        }
+        drawSnow();
+
+        const hud=document.createElement('div');
+        hud.id="w-client-hud";
+        hud.style.display='none';
+        document.body.appendChild(hud);
+        window._updateHud();
+
+        const keystrokes=document.createElement('div');
+        keystrokes.id="w-keystrokes";
+        keystrokes.innerHTML=`<div class="w-ks-row"><div class="w-ks-key" id="k-w">W</div></div><div class="w-ks-row"><div class="w-ks-key" id="k-a">A</div><div class="w-ks-key" id="k-s">S</div><div class="w-ks-key" id="k-d">D</div></div><div class="w-ks-row"><div class="w-ks-key mouse" id="k-lmb">ЛКМ</div><div class="w-ks-key mouse" id="k-rmb">ПКМ</div></div><div class="w-ks-row"><div class="w-ks-key space" id="k-space">―</div></div>`;
+        keystrokes.style.display='none';
+        document.body.appendChild(keystrokes);
+
+        const keybindsList=document.createElement('div');
+        keybindsList.id="w-keybinds-list";
+        keybindsList.style.display='none';
+        document.body.appendChild(keybindsList);
+
+        const bindModal=document.createElement('div');
+        bindModal.id="w-bind-modal";
+        bindModal.style.cssText="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:var(--w-bg-base); border:1px solid var(--w-border); padding:25px; border-radius:8px; z-index:999999999; flex-direction:column; gap:15px; box-shadow:0 10px 40px rgba(0,0,0,0.8); font-family:-apple-system,sans-serif;";
+        bindModal.innerHTML=`<div style="font-size:16px; font-weight:bold; text-align:center; color:var(--w-text);" id="w-bind-title">Bind Function</div><div style="text-align:center; color:var(--w-subtext); font-size:13px;" id="w-bind-status">Press any key...</div><div style="display:flex; gap:10px; justify-content:center; margin-top:10px;"><button class="w-btn" id="w-btn-delete-bind" style="background:#ff4444; color:white; border:none; display:none;" onclick="window._removeBind()">Delete Bind</button><button class="w-btn" onclick="window._closeBindModal()">Cancel</button></div>`;
+        document.body.appendChild(bindModal);
+
+        const customLogoSVG=`<svg style="color:var(--w-text);" width="100%" height="100%" viewBox="0 0 50.4 23.7"><g transform="translate(-213.9 -167.3)"><path fill="currentColor" d="M255.3 178.9c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4zM255.3 183.8c0-.7.6-1.4 1.4-1.4h3.6c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-3.6c-.7 0-1.4-.6-1.4-1.4zM255.3 188.8c0-.7.6-1.4 1.4-1.4h6.3c.7 0 1.4.6 1.4 1.4v0c0 .7-.6 1.4-1.4 1.4h-6.3c-.7 0-1.4-.6-1.4-1.4z"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M250.7 178.5c0 0-4 2-4 3.1 0 .8 4.4 1.6 5.1 3.1 1.2 2.6-5.3 4.5-5.3 4.5"/><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" d="M241.8 181.9v7.3M241.8 178.5v.1"/><path fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linecap="round" d="M216.4 169.8l7.5 18.7M227.6 179.2l-3.7 9.3M231.4 188.5l-3.7-9.3M231.4 188.5l7.5-18.7"/></g></svg>`;
+        const iconDanger=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 3.83L19.5 19H4.5L12 5.83zM11 10h2v5h-2v-5zm0 6h2v2h-2v-2z"></path></svg>`;
+        const iconEye=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path></svg>`;
+        const iconGear=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.62-.06.94 0 .32.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61L19.14,12.94z M12,15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`;
+        const iconRefresh=`<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`;
+        const iconSearch=`<svg class="w-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 12.01 5 9.5S7.01 5 9.5 5 14 6.99 14 9.5 12.01 14 9.5 14z"/></svg>`;
+        const iconMove=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>`;
+        const iconPalette=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.08-.09-.13-.21-.13-.33 0-.28.22-.5.5-.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 8 6.5 8 8 8.67 8 9.5 7.33 11 6.5 11zm3-4c-.83 0-1.5-.67-1.5-1.5S8.67 4 9.5 4 11 4.67 11 5.5 10.33 7 9.5 7zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 4 14.5 4 16 4.67 16 5.5 15.33 7 14.5 7zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 8 17.5 8 19 8.67 19 9.5 18.33 11 17.5 11z"/></svg>`;
+        const iconUser=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+        const iconDisplay=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>`;
+        const iconHud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14zM7 7h10v2H7zm0 4h10v2H7zm0 4h7v2H7z"/></svg>`;
+        const iconPuzzle=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>`;
+        const iconCloud=`<svg class="w-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>`;
+        const iconPicker=`<svg width="12" height="12" viewBox="0 0 24 24" fill="var(--w-subtext)"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06 1.92 1.92L6.92 19z"/></svg>`;
+
+        const gui=document.createElement('div');
+        gui.id="w-client-gui";
+        gui.innerHTML=`
+            <div class="w-sidebar">
+                <div class="w-sidebar-top">
+                    <div class="w-drag-header" id="w-drag-handle">${customLogoSVG}</div>
+                    
+                    <div class="w-cat-title" id="cat-danger">${t('dangerCat')}</div>
+                    <div class="w-tab active" id="tab-danger" onclick="window._switchTab('danger')"><span style="display:flex;align-items:center;gap:10px;">${iconDanger} <span id="txt-danger">${t('dangerTab')}</span></span></div>
+                    
+                    <div class="w-cat-title" id="cat-visuals">${t('visualsCat')}</div>
+                    <div class="w-tab" id="tab-hud" onclick="window._switchTab('hud')"><span style="display:flex;align-items:center;gap:10px;">${iconHud} <span id="txt-hud">${t('hudTab')}</span></span></div>
+                    <div class="w-tab" id="tab-display" onclick="window._switchTab('display')"><span style="display:flex;align-items:center;gap:10px;">${iconDisplay} <span id="txt-display">${t('displayTab')}</span></span></div>
+                    
+                    <div class="w-cat-title" id="cat-more">${t('moreCat')}</div>
+                    <div class="w-tab" id="tab-user" onclick="window._switchTab('user')"><span style="display:flex;align-items:center;gap:10px;">${iconUser} <span id="txt-user">${t('userTab')}</span></span></div>
+                    
+                    <div class="w-cat-title" id="cat-settings">${t('settingsCat')}</div>
+                    <div class="w-tab" id="tab-misc" onclick="window._switchTab('misc')"><span style="display:flex;align-items:center;gap:10px;">${iconPuzzle} <span id="txt-misc">${t('miscTab')}</span></span></div>
+                    <div class="w-tab" id="tab-configs" onclick="window._switchTab('configs')"><span style="display:flex;align-items:center;gap:10px;">${iconCloud} <span id="txt-configs">${t('configsTab')}</span></span></div>
+                </div>
+                <div class="w-sidebar-bot">
+                    <div class="w-bot-btn" id="btn-search" onclick="window._switchTab('search')" title="Search">${iconSearch}</div>
+                    <div class="w-bot-btn" id="btn-palette" onclick="window._toggleAccentMenu(event)" title="Accent Color">
+                        ${iconPalette}
+                        <div id="w-accent-menu">
+                            <div class="w-color-dot" style="background:#ffffff" onclick="window._setAccentColor('#ffffff', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="var(--w-bg-base)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                            <div class="w-color-dot" style="background:#ff8c00" onclick="window._setAccentColor('#ff8c00', this)"></div>
+                            <div class="w-color-dot" style="background:#ff4444" onclick="window._setAccentColor('#ff4444', this)"></div>
+                            <div class="w-color-dot" style="background:#44ff44" onclick="window._setAccentColor('#44ff44', this)"></div>
+                            <div class="w-color-dot" style="background:#4444ff" onclick="window._setAccentColor('#4444ff', this)"></div>
+                            <div class="w-color-dot" style="background:#ffff44" onclick="window._setAccentColor('#ffff44', this)"></div>
+                            <div class="w-color-dot" style="background:#ff44ff" onclick="window._setAccentColor('#ff44ff', this)"></div>
+                            <div class="w-color-dot" style="background:#44ffff" onclick="window._setAccentColor('#44ffff', this)"></div>
+                            <div class="w-color-dot w-color-picker-dot">
+                                ${iconPicker}
+                                <input type="color" id="accent-color" value="#ffffff" oninput="window._setAccentColor(this.value, this.parentElement)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-bot-btn" id="btn-edit" onclick="window._toggleEditMode()" title="Edit HUD">${iconMove}</div>
+                </div>
+            </div>
+            <div class="w-main">
+                <div class="w-topbar"><div id="w-header-title"></div></div>
+                <div class="w-content" id="w-content-area"></div>
+            </div>
+        `;
+        document.body.appendChild(gui);
+
+        const contentArea=document.getElementById('w-content-area');
+        const headerTitle=document.getElementById('w-header-title');
+
+        const pages={
+            danger:()=>`
+                <div class="w-tab-grid">
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-varhack">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('varHack')}</div><div class="w-card-sub">${t('varHackSub')}</div></div>
+                                <div class="w-card-controls"><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: center;"><div><div class="w-setting-title">${t('varScanner')}</div><div class="w-setting-sub" style="margin-bottom:0;">${t('varScannerSub')}</div></div><button class="w-btn w-btn-icon" onclick="window._scanVars()">${iconRefresh}</button></div>
+                                <div id="var-list-container" style="display:none; flex-direction:column; max-height: 250px; overflow-y: auto; padding-right: 4px; border-top: 1px solid var(--w-border); margin-top: 15px; padding-top: 10px;"></div>
+                            </div>
+                        </div>
+                        <div class="w-card" id="card-broadcast">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('broadcastSpoof')}</div><div class="w-card-sub">${t('broadcastSpoofSub')}</div></div>
+                                <div class="w-card-controls"><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: center;"><div><div class="w-setting-title">${t('broadcastSpoof')}</div></div><button class="w-btn w-btn-icon" onclick="window._scanBroadcasts()">${iconRefresh}</button></div>
+                                <div id="broadcast-list-container" style="display:none; flex-direction:column; max-height: 250px; overflow-y: auto; padding-right: 4px; border-top: 1px solid var(--w-border); margin-top: 15px; padding-top: 10px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-speedhack" data-bind="speed">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('speedHack')} <span class="w-bind-badge" id="bind-badge-speed"></span></div><div class="w-card-sub">${t('speedHackSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="speed-toggle" onchange="window._twToggleFPS(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div class="w-setting-title">${t('fpsLimit')}</div><div class="w-setting-sub">${t('fpsLimitSub')}</div>
+                                <div class="w-range-container"><div class="w-range-labels"><span style="color:var(--w-subtext);">1</span><span id="speed-val">60</span></div><input type="range" id="speed-range" class="w-range" min="1" max="144" value="60" oninput="document.getElementById('speed-val').innerText = this.value; window._updateSlider(this); if(window.wState.speed) window._twToggleFPS(true);"></div>
+                            </div>
+                        </div>
+                        <div class="w-card" id="card-clonelimit" data-bind="cloneLimit">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('cloneLimit')} <span class="w-bind-badge" id="bind-badge-cloneLimit"></span></div><div class="w-card-sub">${t('cloneLimitSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="clonelimit-toggle" onchange="window._toggleCloneLimit(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            hud:()=>`
+                <div class="w-tab-grid">
+                    <div class="w-masonry-col">
+                        <div class="w-card" data-bind="watermark">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('watermark')} <span class="w-bind-badge" id="bind-badge-watermark"></span></div><div class="w-card-sub">${t('watermarkSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="watermark-toggle" onchange="window._toggleWatermark(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                        <div class="w-card" data-bind="keybindsList">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('keybindsList')} <span class="w-bind-badge" id="bind-badge-keybindsList"></span></div><div class="w-card-sub">${t('keybindsListSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="keybinds-toggle" onchange="window._toggleKeybindsListToggle(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-masonry-col">
+                        <div class="w-card" data-bind="keys">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('keys')} <span class="w-bind-badge" id="bind-badge-keys"></span></div><div class="w-card-sub">${t('keysSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="keys-toggle" onchange="window._toggleKeys(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            display:()=>`
+                <div class="w-tab-grid">
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-stagefilter" data-bind="filter">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('stageFilter')} <span class="w-bind-badge" id="bind-badge-filter"></span></div><div class="w-card-sub">${t('stageFilterSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="filter-toggle" onchange="window._toggleFilter(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="w-setting-title">${t('filterType')}</div>
+                                    ${makeSelect('filter-select', [
+                                        {val: 'grayscale', text: 'Grayscale'},
+                                        {val: 'invert', text: 'Invert'},
+                                        {val: 'sepia', text: 'Sepia'},
+                                        {val: 'contrast', text: 'Contrast'},
+                                        {val: 'blur', text: 'Blur'}
+                                    ], window.wCurrentFilter, '_setStageFilter')}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-card" id="card-trail" data-bind="trail">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('trail')} <span class="w-bind-badge" id="bind-badge-trail"></span></div><div class="w-card-sub">${t('trailSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="trail-toggle" onchange="window._toggleTrail(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: center;"><div class="w-setting-title">${t('effColor')}</div><div class="w-color-picker-container"><span class="w-subtext">${t('color')}</span><input type="color" id="trail-color" value="${trailEffectColor}" oninput="window._updateTrailColor(this.value)"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-clickeffect" data-bind="click">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('clickEff')} <span class="w-bind-badge" id="bind-badge-click"></span></div><div class="w-card-sub">${t('clickEffSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="click-toggle" onchange="window._toggleClick(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display: flex; justify-content: space-between; align-items: center;"><div class="w-setting-title">${t('effColor')}</div><div class="w-color-picker-container"><span class="w-subtext">${t('color')}</span><input type="color" id="click-color" value="${clickEffectColor}" oninput="window._updateClickColor(this.value)"></div></div>
+                                <div class="w-range-container" style="margin-top:15px;"><div class="w-range-labels"><span style="color:var(--w-subtext);">${t('clickSize')}</span><span id="click-size-val">${clickEffectSize}</span></div><input type="range" class="w-range" min="10" max="150" value="${clickEffectSize}" oninput="document.getElementById('click-size-val').innerText = this.value; window._updateSlider(this); window._updateClickSize(this.value);"></div>
+                                <div class="w-range-container" style="margin-top:15px;"><div class="w-range-labels"><span style="color:var(--w-subtext);">${t('clickWidth')}</span><span id="click-width-val">${clickEffectWidth}</span></div><input type="range" class="w-range" min="1" max="10" value="${clickEffectWidth}" oninput="document.getElementById('click-width-val').innerText = this.value; window._updateSlider(this); window._updateClickWidth(this.value);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            user:()=>`
+                <div class="w-tab-grid">
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-spoof" data-bind="spoof">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('spoof')} <span class="w-bind-badge" id="bind-badge-spoof"></span></div><div class="w-card-sub">${t('spoofSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="spoof-toggle" onchange="window._toggleSpoof(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display:flex; gap:6px;">
+                                    <input type="text" id="spoof-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="New username..." oninput="if(window.wState.spoof) window._updateHud()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-masonry-col">
+                        <div class="w-card" id="card-timerhack" data-bind="timerHack">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('timerHack')} <span class="w-bind-badge" id="bind-badge-timerHack"></span></div><div class="w-card-sub">${t('timerHackSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="timer-toggle" onchange="window._toggleTimer(this.checked)"><span class="w-slider-toggle"></span></label><button class="w-expand-btn" onclick="window._toggleCard(this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></button></div>
+                            </div>
+                            <div class="w-card-body">
+                                <div style="display:flex; gap:6px;">
+                                    <input type="number" id="timer-input" class="w-var-input" style="flex:1; max-width:none; text-align:left; padding-left:10px;" placeholder="Time in seconds (e.g. 0.0)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            misc:()=>`
+                <div class="w-tab-grid">
+                    <div class="w-masonry-col">
+                        <div class="w-card">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('menuBlur')}</div><div class="w-card-sub">${t('menuBlurSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="menublur-toggle" onchange="window._toggleMenuBlur(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                        <div class="w-card">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('theme')}</div><div class="w-card-sub">${t('themeSub')}</div></div>
+                                <div class="w-card-controls">
+                                    ${makeSelect('theme-select', [
+                                        {val: 'dark', text: t('dark')},
+                                        {val: 'light', text: t('light')}
+                                    ], currentTheme, '_setTheme')}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-card" style="border-color:#ff4444;" data-bind="panic">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title" style="color:#ff4444;">${t('panic')} <span class="w-bind-badge" id="bind-badge-panic"></span></div><div class="w-card-sub">${t('panicSub')}</div></div>
+                                <div class="w-card-controls"><button class="w-btn" style="background:#ff4444;color:white;border:none;" onclick="window._panic()">EXECUTE</button></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-masonry-col">
+                        <div class="w-card">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('menuSnow')}</div><div class="w-card-sub">${t('menuSnowSub')}</div></div>
+                                <div class="w-card-controls"><label class="w-switch"><input type="checkbox" id="menusnow-toggle" onchange="window._toggleMenuSnow(this.checked)"><span class="w-slider-toggle"></span></label></div>
+                            </div>
+                        </div>
+                        <div class="w-card">
+                            <div class="w-card-header">
+                                <div class="w-card-info"><div class="w-card-title">${t('language')}</div><div class="w-card-sub">${t('languageSub')}</div></div>
+                                <div class="w-card-controls">
+                                    ${makeSelect('lang-select', [
+                                        {val: 'en', text: 'English'},
+                                        {val: 'ru', text: 'Русский'},
+                                        {val: 'uk', text: 'Українська'}
+                                    ], currentLang, '_setLang')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `,
+            configs:()=> {
+                let html = `
+                <div class="w-config-tabs">
+                    <div class="w-config-tab ${window.wCurrentConfigTab === 'cloud' ? 'active' : ''}" onclick="window._switchConfigTab('cloud')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconCloud} ${t('cloudConfigs')}</div></div>
+                    <div class="w-config-tab ${window.wCurrentConfigTab === 'local' ? 'active' : ''}" onclick="window._switchConfigTab('local')"><div style="display:flex;align-items:center;justify-content:center;gap:6px;">${iconSave} ${t('localConfigs')}</div></div>
+                </div>
+                `;
+                if(window.wCurrentConfigTab === 'local') {
+                    html += `
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <button class="w-btn w-pill-primary" style="flex:1; justify-content:center; padding:10px; gap:6px;" onclick="window._showCreateConfig()">${iconPlus} ${t('createConfig')}</button>
+                            <button class="w-btn" style="flex:1; justify-content:center; padding:10px; gap:6px;" onclick="window._showImportConfig()">${iconImport} ${t('importConfig')}</button>
+                        </div>
+                        <div id="local-configs-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    `;
+                    setTimeout(window._renderConfigsList, 50);
+                } else {
+                    html += `<div style="text-align:center; color:var(--w-subtext); margin-top:30px; font-weight:600;">${t('cloudNotAvail')}</div>`;
+                }
+                return html;
+            }
+        };
+
+        window._switchTab=function(tabId){
+            currentTab=tabId;
+            document.querySelectorAll('.w-tab, .w-bot-btn').forEach(t=>t.classList.remove('active'));
+            if(document.getElementById(`tab-${tabId}`)) document.getElementById(`tab-${tabId}`).classList.add('active');
+            if(document.getElementById(`btn-${tabId}`)) document.getElementById(`btn-${tabId}`).classList.add('active');
+            
+            let catMap = {'danger':'dangerCat', 'hud':'visualsCat', 'display':'visualsCat', 'user':'moreCat', 'misc':'settingsCat', 'configs':'settingsCat'};
+            let tabMap = {'danger':'dangerTab', 'hud':'hudTab', 'display':'displayTab', 'user':'userTab', 'misc':'miscTab', 'configs':'configsTab'};
+
+            if(tabId==='search') headerTitle.innerHTML=`<strong>${t('searchTitle')}</strong>`;
+            else headerTitle.innerHTML=`${t(catMap[tabId])} / <strong>${t(tabMap[tabId])}</strong>`;
+            
+            if(tabId==='search'){
+                let tempDiv = document.createElement('div');
+                tempDiv.innerHTML = pages.danger() + pages.hud() + pages.display() + pages.user() + pages.misc();
+                let col1HTML = ''; let col2HTML = ''; let i = 0;
+                tempDiv.querySelectorAll('.w-card').forEach(card => {
+                    if(i % 2 === 0) col1HTML += card.outerHTML;
+                    else col2HTML += card.outerHTML;
+                    i++;
+                });
+                contentArea.innerHTML=`<input type="text" id="global-search-input" class="w-search-box" placeholder="${t('search')}" oninput="window._filterGlobal(this.value)"><div class="w-tab-grid"><div class="w-masonry-col">${col1HTML}</div><div class="w-masonry-col">${col2HTML}</div></div>`;
+            }else{
+                contentArea.innerHTML=pages[tabId]();
+            }
+            
+            document.querySelectorAll('input[type="range"]').forEach(el=>window._updateSlider(el));
+            
+            if(tabId==='danger'||tabId==='search'){
+                let sp=document.getElementById('speed-toggle'); if(sp) sp.checked=window.wState.speed;
+                let cl=document.getElementById('clonelimit-toggle'); if(cl) cl.checked=window.wState.cloneLimit;
+            }
+            if(tabId==='hud'||tabId==='search'){
+                let ht=document.getElementById('watermark-toggle'); if(ht) ht.checked=window.wState.watermark;
+                let kt=document.getElementById('keys-toggle'); if(kt) kt.checked=window.wState.keys;
+                let kb=document.getElementById('keybinds-toggle'); if(kb) kb.checked=window.wState.keybindsList;
+            }
+            if(tabId==='display'||tabId==='search'){
+                let ct=document.getElementById('click-toggle'); if(ct) ct.checked=window.wState.click;
+                let tr=document.getElementById('trail-toggle'); if(tr) tr.checked=window.wState.trail;
+                let cc=document.getElementById('click-color'); if(cc) cc.value=clickEffectColor;
+                let tc=document.getElementById('trail-color'); if(tc) tc.value=trailEffectColor;
+                let ft=document.getElementById('filter-toggle'); if(ft) ft.checked=window.wState.filter;
+            }
+            if(tabId==='user'||tabId==='search'){
+                let st=document.getElementById('spoof-toggle'); if(st) st.checked=window.wState.spoof;
+                let tt=document.getElementById('timer-toggle'); if(tt) tt.checked=window.wState.timerHack;
+                let si = document.getElementById('spoof-input');
+                let ti = document.getElementById('timer-input');
+                if(si && !si.value && window.wState.spoofName) si.value = window.wState.spoofName;
+                if(ti && !ti.value && window.wState.timerVal) ti.value = window.wState.timerVal;
+            }
+            if(tabId==='misc'||tabId==='search'){
+                let mb=document.getElementById('menublur-toggle'); if(mb) mb.checked=window.wState.menuBlur;
+                let ms=document.getElementById('menusnow-toggle'); if(ms) ms.checked=window.wState.menuSnow;
+                let ac=document.getElementById('accent-color'); if(ac) ac.value=getComputedStyle(document.documentElement).getPropertyValue('--w-main-color').trim();
+            }
+            
+            window._updateBindBadges();
+            if(tabId==='search') setTimeout(()=>document.getElementById('global-search-input')?.focus(),50);
+        };
+
+        const makeDrag=function(id){
+            const el=document.getElementById(id);
+            if(!el) return;
+            let isDrag=false,ox=0,oy=0;
+            el.addEventListener('mousedown',e=>{
+                if(!el.classList.contains('w-editing'))return;
+                isDrag=true;
+                let rect=el.getBoundingClientRect();
+                ox=e.clientX-rect.left;
+                oy=e.clientY-rect.top;
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove',e=>{
+                if(!isDrag)return;
+                let nx=e.clientX-ox;
+                let ny=e.clientY-oy;
+                
+                if(window.wAlignmentEnabled){
+                    let otherIds = ['w-client-hud', 'w-keystrokes', 'w-keybinds-list'].filter(i => i !== id);
+                    let snapped=false;
+                    for(let oid of otherIds) {
+                        let otherEl=document.getElementById(oid);
+                        if(otherEl && otherEl.style.display !== 'none'){
+                            let otherRect=otherEl.getBoundingClientRect();
+                            if(Math.abs(nx-otherRect.left)<15){
+                                nx=otherRect.left;
+                                window._showGuideX(nx);
+                                snapped=true;
+                                break;
+                            }
+                        }
+                    }
+                    if(!snapped && Math.abs(nx-12)<15){
+                        nx=12;
+                        window._showGuideX(12);
+                        snapped=true;
+                    }
+                    if(!snapped) window._hideGuideX();
+                }
+
+                el.style.left=nx+'px';
+                el.style.top=ny+'px';
+                el.style.right='auto';
+                el.style.bottom='auto';
+            });
+            document.addEventListener('mouseup',()=>{
+                isDrag=false;
+                window._hideGuideX();
+            });
+        };
+        makeDrag('w-client-hud');
+        makeDrag('w-keystrokes');
+        makeDrag('w-keybinds-list');
+
+        const wOnMouseMove = (e)=>{
+            window.mouseX=e.clientX;
+            window.mouseY=e.clientY;
+            window._updateHud();
+        };
+
+        const keyMap={'KeyW':'k-w','KeyA':'k-a','KeyS':'k-s','KeyD':'k-d','Space':'k-space'};
+        
+        const wOnKeyDown = (e)=>{
+            if(window.wIsBinding) {
+                e.preventDefault();
+                e.stopPropagation();
+                if(e.code !== 'Escape') {
+                    let oldKey = Object.keys(window.wBinds).find(k => window.wBinds[k] === window.wCurrentBindId);
+                    if(oldKey) delete window.wBinds[oldKey];
+                    window.wBinds[e.code] = window.wCurrentBindId;
+                }
+                window._closeBindModal();
+                window._updateBindBadges();
+                window._updateKeybindsList();
+                return;
+            }
+
+            if(window.wBinds && window.wBinds[e.code]) {
+                e.preventDefault();
+                window._executeBind(window.wBinds[e.code]);
+            }
+
+            if(keyMap[e.code])document.getElementById(keyMap[e.code])?.classList.add('active');
+            if(e.code==='AltRight'){
+                e.preventDefault();
+                gui.classList.toggle('hidden');
+                let isMenuOpen = !gui.classList.contains('hidden');
+                if (window.wState.menuBlur) document.getElementById('w-menu-backdrop').style.display = isMenuOpen ? 'block' : 'none';
+                if (window.wState.menuSnow) document.getElementById('w-snow-canvas').style.display = isMenuOpen ? 'block' : 'none';
+            }
+        };
+
+        const wOnKeyUp = (e)=>{
+            if(keyMap[e.code])document.getElementById(keyMap[e.code])?.classList.remove('active');
+        };
+        
+        const wOnMouseDown = (e)=>{
+            if(e.button === 1) { 
+                let bindEl = e.target.closest('[data-bind]');
+                if(bindEl) {
+                    e.preventDefault();
+                    let titleEl = bindEl.querySelector('.w-setting-title') || bindEl.querySelector('.w-card-title');
+                    let titleText = titleEl ? titleEl.innerText.replace(/\[.*?\]/g, '').trim() : "Function";
+                    window._openBindModal(bindEl.dataset.bind, titleText);
+                }
+            }
+
+            if(e.button===0)document.getElementById('k-lmb')?.classList.add('active');
+            if(e.button===2)document.getElementById('k-rmb')?.classList.add('active');
+            if(!window.wState.click)return;
+            if(e.target.closest('#w-client-gui') || window.wIsBinding || e.target.closest('#w-action-modal'))return;
+            
+            const ripple=document.createElement('div');
+            ripple.className='w-click-ripple';
+            ripple.style.left=`${e.clientX}px`;
+            ripple.style.top=`${e.clientY}px`;
+            ripple.style.borderColor=clickEffectColor;
+            document.body.appendChild(ripple);
+            setTimeout(()=>ripple.remove(),600);
+        };
+        
+        const wOnMouseUp = (e)=>{
+            if(e.button===0)document.getElementById('k-lmb')?.classList.remove('active');
+            if(e.button===2)document.getElementById('k-rmb')?.classList.remove('active');
+        };
+
+        document.addEventListener('mousemove', wOnMouseMove);
+        document.addEventListener('keydown', wOnKeyDown);
+        document.addEventListener('keyup', wOnKeyUp);
+        document.addEventListener('mousedown', wOnMouseDown);
+        document.addEventListener('mouseup', wOnMouseUp);
+
+        const handle=document.getElementById('w-drag-handle');
+        let isDraggingGui=false,gox=0,goy=0;
+        handle.addEventListener('mousedown',(e)=>{
+            if(e.button !== 0) return;
+            isDraggingGui=true;
+            const rect=gui.getBoundingClientRect();
+            gox=e.clientX-rect.left;
+            goy=e.clientY-rect.top;
+        });
+        document.addEventListener('mousemove',(e)=>{
+            if(!isDraggingGui)return;
+            e.preventDefault();
+            gui.style.left=(e.clientX-gox)+'px';
+            gui.style.top=(e.clientY-goy)+'px';
+        });
+        document.addEventListener('mouseup',()=>isDraggingGui=false);
+
+        window._switchTab('danger');
+    }
+})();
